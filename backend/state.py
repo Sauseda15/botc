@@ -22,7 +22,7 @@ TEST_PLAYER_PREFIX = 'test-player-'
 STATUS_POISONED = 'Poisoned'
 STATUS_DRUNK = 'Drunk'
 STATUS_DIES_AT_DAWN = 'Dies at dawn'
-VOTE_WINDOW_SECONDS = 5
+VOTE_WINDOW_SECONDS = 10
 
 
 def utcnow() -> datetime:
@@ -1539,6 +1539,7 @@ class GameStore:
 
 
 store = GameStore()
+
 
 
 

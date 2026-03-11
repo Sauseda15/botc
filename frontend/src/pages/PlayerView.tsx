@@ -185,7 +185,18 @@ export default function PlayerView({ auth }: Props) {
   const executionCandidateVotes = state?.execution_candidate_votes ?? publicState?.execution_candidate_votes ?? 0;
   const playerNameById = new Map((state?.players ?? publicState?.players ?? []).map((player) => [player.discord_user_id, player.display_name]));
   const pollIntervalMs = nominationState && !nominationState.resolved_at ? 1000 : 4000;
-  const liveSecondsRemaining = nominationState && !nominationState.resolved_at ? Math.max(0, 5 - (Math.floor((nowMs - new Date(nominationState.opened_at).getTime()) / 1000) % 5)) : nominationState?.seconds_remaining ?? 0;
+  const liveElapsedSeconds = nominationState && !nominationState.resolved_at
+    ? Math.max(0, Math.floor((nowMs - new Date(nominationState.opened_at).getTime()) / 1000))
+    : 0;
+  const liveSecondsRemaining = nominationState && !nominationState.resolved_at
+    ? Math.max(0, 10 - (liveElapsedSeconds % 10))
+    : nominationState?.seconds_remaining ?? 0;
+  const liveVoteIndex = nominationState && !nominationState.resolved_at
+    ? Math.floor(liveElapsedSeconds / 10)
+    : -1;
+  const liveCurrentVoterId = nominationState && !nominationState.resolved_at
+    ? (nominationState.vote_order[Math.min(liveVoteIndex, Math.max(nominationState.vote_order.length - 1, 0))] ?? null)
+    : null;
 
   const selectablePlayers = state?.players.filter((player) => {
     if (currentNightStep?.allow_self === false && player.discord_user_id === state?.viewer?.discord_user_id) {
@@ -413,7 +424,8 @@ export default function PlayerView({ auth }: Props) {
   const needsPlayerSelect = currentNightStep?.input_type === 'player_select';
   const hasAllTargets = !needsPlayerSelect || selectedTargets.filter(Boolean).length === activeTargetCount;
   const canSignalGrimoireReady = Boolean(viewerGrimoire) && Boolean(isViewerTurn);
-  const currentVoterId = nominationState?.current_voter_id ?? null;
+  const currentVoterId = nominationState?.resolved_at ? null : (liveCurrentVoterId ?? nominationState?.current_voter_id ?? null);
+  const currentVoterName = currentVoterId ? (playerNameById.get(currentVoterId) ?? currentVoterId) : 'Locking votes';
   const isCurrentVoter = currentVoterId === state?.viewer?.discord_user_id;
   const nomineeName = nominationState?.nominee_id ? playerNameById.get(nominationState.nominee_id) ?? nominationState.nominee_id : null;
   const nominatorName = nominationState?.nominator_id ? playerNameById.get(nominationState.nominator_id) ?? nominationState.nominator_id : null;
@@ -634,7 +646,7 @@ export default function PlayerView({ auth }: Props) {
               {nominationState.resolved_at ? (
                 <p className="muted">Vote locked: {nominationState.result_vote_count} yes vote(s). {nominationState.result_vote_count >= nominationState.required_votes ? 'The nomination reached the execution threshold.' : 'The nomination failed to reach the execution threshold.'}</p>
               ) : (
-                <p className="muted">Current voter: {currentVoterId ? (playerNameById.get(currentVoterId) ?? currentVoterId) : 'Locking votes'} · {liveSecondsRemaining}s remaining</p>
+                <p className="muted">Current voter: {currentVoterName} · {liveSecondsRemaining}s remaining</p>
               )}
               {executionCandidateName ? <p className="muted">Currently marked for execution: {executionCandidateName} ({executionCandidateVotes} vote(s))</p> : <p className="muted">No player is currently marked for execution.</p>}
               <div className="inline-form">
@@ -655,6 +667,7 @@ export default function PlayerView({ auth }: Props) {
     </section>
   );
 }
+
 
 
 
