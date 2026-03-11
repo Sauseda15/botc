@@ -284,36 +284,36 @@ textarea {
 
 .role-heading,
 .token-heading {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
 .role-heading.large {
-  align-items: flex-start;
-}
-
-.role-heading.large .player-role-icon {
-    width: 72px;
-    height: 72px;
-    object-fit: contain;
+    align-items: flex-start;
 }
 
 .role-heading.large .role-icon,
 .role-heading.large .role-icon-fallback {
-  width: 56px;
-  height: 56px;
+    width: 56px;
+    height: 56px;
+}
+
+.role-heading.large .player-role-icon {
+    width: 76px;
+    height: 76px;
+    object-fit: contain;
 }
 
 .role-reference-card {
-  padding: 14px;
-  border-radius: 14px;
-  background: var(--panel-alt);
-  border: 1px solid var(--line);
+    padding: 14px;
+    border-radius: 14px;
+    background: var(--panel-alt);
+    border: 1px solid var(--line);
 }
 
 .role-reference-card.compact {
-  padding: 12px;
+    padding: 12px;
 }
 
 @media (max-width: 900px) {
