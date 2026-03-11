@@ -293,6 +293,7 @@ textarea {
     display: grid;
     grid-template-columns: auto 1fr;
     column-gap: 12px;
+    align-items: center;
 }
 
 .role-heading.large .role-icon,
@@ -301,15 +302,25 @@ textarea {
     height: 56px;
 }
 
-.role-heading.large .player-role-icon {
-    width: 76px;
-    height: 76px;
-    object-fit: contain;
+.player-role-sheet {
+    align-items: stretch;
+}
 
-    /* Align icon with the Alignment row */
-    grid-row: 2;
-        
- }
+.player-role-summary {
+    display: grid;
+    gap: 8px;
+}
+
+.role-line {
+    margin: 0;
+}
+
+.role-heading.large .player-role-icon {
+    width: 104px;
+    height: 104px;
+    object-fit: contain;
+    align-self: stretch;
+}
 
 .role-reference-card {
     padding: 14px;

@@ -387,23 +387,20 @@ export default function PlayerView({ auth }: Props) {
 
         <div className="card stack">
           <h2>Your Role Sheet</h2>
-          <div className="role-heading large">
-          <p className="role-line">
-            <strong>Role:</strong> {state?.viewer?.role_name ?? 'Hidden until storyteller assigns roles'}
-          </p>
-          
-          <RoleIcon iconUrl={viewerRole?.icon_url} name={viewerRole?.name ?? 'Role'} variant="player" />
-
-          <p className="role-line">
-            <strong>Alignment:</strong> {state?.viewer?.alignment ?? 'Unknown'}
-          </p>
-
-          <div></div>
-
-          <p className="role-line">
-            <strong>Phase:</strong> {state?.phase?.charAt(0).toUpperCase() + state?.phase?.slice(1) ?? 'setup'}
-           </p>
-        </div>
+          <div className="role-heading large player-role-sheet">
+            <RoleIcon iconUrl={viewerRole?.icon_url} name={viewerRole?.name ?? 'Role'} variant="player" />
+            <div className="player-role-summary">
+              <p className="role-line">
+                <strong>Role:</strong> {state?.viewer?.role_name ?? 'Hidden until storyteller assigns roles'}
+              </p>
+              <p className="role-line">
+                <strong>Alignment:</strong> {state?.viewer?.alignment ?? 'Unknown'}
+              </p>
+              <p className="role-line">
+                <strong>Phase:</strong> {state?.phase ? state.phase.charAt(0).toUpperCase() + state.phase.slice(1) : 'Setup'}
+              </p>
+            </div>
+          </div>
 
           {viewerRole?.description ? <p className="muted">{viewerRole.description}</p> : null}
           {isPreview ? <p className="muted">Preview mode lets the storyteller inspect this player view and test actions when it is this player's turn.</p> : null}
