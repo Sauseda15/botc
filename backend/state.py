@@ -9,7 +9,7 @@ import secrets
 import uuid
 
 from config import settings
-from content import build_night_prompt, infer_alignment
+from content import build_night_prompt, get_script_reference, infer_alignment
 
 
 UTC = timezone.utc
@@ -378,6 +378,7 @@ class GameStore:
                 'game_id': self._game.game_id,
                 'name': self._game.name,
                 'script': self._game.script,
+                'script_reference': get_script_reference(self._game.script),
                 'phase': self._game.phase.value,
                 'players': [self._serialize_player_public(player) for player in players],
                 'current_nomination': self.serialize_nomination(),
@@ -404,6 +405,7 @@ class GameStore:
                 'game_id': self._game.game_id,
                 'name': self._game.name,
                 'script': self._game.script,
+                'script_reference': get_script_reference(self._game.script),
                 'phase': self._game.phase.value,
                 'storyteller_id': self._game.storyteller_id,
                 'players': [self._serialize_player_private(player) for player in players],

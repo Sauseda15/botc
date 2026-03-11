@@ -17,6 +17,7 @@ type RoleOption = {
   alignment: string;
   group: string;
   description: string;
+  icon_url: string;
 };
 
 type ScriptOption = {
@@ -55,10 +56,17 @@ type PlayerRecord = {
   night_action_submitted_at?: string | null;
 };
 
+type ScriptReference = {
+  id: string;
+  label: string;
+  roles: RoleOption[];
+};
+
 type StorytellerState = {
   game_id: string;
   name: string;
   script: string;
+  script_reference: ScriptReference;
   phase: string;
   storyteller_id?: string | null;
   players: PlayerRecord[];
@@ -117,6 +125,13 @@ function hydrateSeats(current: SetupSeat[], lobbyPlayers: LobbyPlayer[], playerC
   });
 }
 
+function RoleIcon({ iconUrl, name }: { iconUrl?: string; name: string }) {
+  if (!iconUrl) {
+    return <div className="role-icon-fallback" aria-hidden="true">{name.slice(0, 1)}</div>;
+  }
+  return <img className="role-icon" src={iconUrl} alt={`${name} icon`} />;
+}
+
 export default function StorytellerDashboard({ auth }: Props) {
   const [state, setState] = useState<StorytellerState | null>(null);
   const [scripts, setScripts] = useState<ScriptOption[]>([]);
@@ -135,6 +150,7 @@ export default function StorytellerDashboard({ auth }: Props) {
     [scriptId, scripts]
   );
 
+  const roleMap = new Map((state?.script_reference?.roles ?? activeScript?.roles ?? []).map((role) => [role.name, role]));
   const seatOptions = useMemo(() => state?.players ?? [], [state]);
   const lobbyPlayers = state?.lobby_players ?? [];
   const filledSeats = setupSeats.filter((seat) => seat.discord_user_id && seat.display_name).length;
@@ -348,25 +364,33 @@ export default function StorytellerDashboard({ auth }: Props) {
             <h3>Auto-Seated Players</h3>
             <p className="muted">Seats fill in login order. Click a seat, then click a token to assign that character.</p>
             <div className="seat-grid">
-              {setupSeats.map((seat, index) => (
-                <article key={seat.seat} className="seat stack">
-                  <div className="inline-form">
-                    <button className={`seat-select ${selectedSeat === index ? 'active' : ''}`} onClick={() => setSelectedSeat(index)}>
-                      Seat {seat.seat + 1}
-                    </button>
-                    {seat.role_name ? <span className="role-chip">{seat.role_name}</span> : null}
-                  </div>
-                  {seat.display_name ? (
-                    <>
-                      <strong>{seat.display_name}</strong>
-                      <div className="muted">{seat.discord_user_id}</div>
-                    </>
-                  ) : (
-                    <div className="muted">Waiting for a player login</div>
-                  )}
-                  <div className="muted">Alignment: {seat.alignment ?? 'Unassigned'}</div>
-                </article>
-              ))}
+              {setupSeats.map((seat, index) => {
+                const seatRole = seat.role_name ? roleMap.get(seat.role_name) : undefined;
+                return (
+                  <article key={seat.seat} className="seat stack">
+                    <div className="inline-form">
+                      <button className={`seat-select ${selectedSeat === index ? 'active' : ''}`} onClick={() => setSelectedSeat(index)}>
+                        Seat {seat.seat + 1}
+                      </button>
+                      {seat.role_name ? (
+                        <span className="role-chip">
+                          <RoleIcon iconUrl={seatRole?.icon_url} name={seat.role_name} />
+                          {seat.role_name}
+                        </span>
+                      ) : null}
+                    </div>
+                    {seat.display_name ? (
+                      <>
+                        <strong>{seat.display_name}</strong>
+                        <div className="muted">{seat.discord_user_id}</div>
+                      </>
+                    ) : (
+                      <div className="muted">Waiting for a player login</div>
+                    )}
+                    <div className="muted">Alignment: {seat.alignment ?? 'Unassigned'}</div>
+                  </article>
+                );
+              })}
             </div>
           </div>
 
@@ -376,14 +400,20 @@ export default function StorytellerDashboard({ auth }: Props) {
             <div className="token-grid">
               {(activeScript?.roles ?? []).map((role) => (
                 <button key={role.name} className={`token-button ${setupSeats[selectedSeat]?.role_name === role.name ? 'active' : ''}`} onClick={() => assignRoleToSeat(role)}>
-                  {role.name}
+                  <span className="token-heading">
+                    <RoleIcon iconUrl={role.icon_url} name={role.name} />
+                    <span>{role.name}</span>
+                  </span>
                   <small>{role.group} · {role.alignment}</small>
                 </button>
               ))}
             </div>
             {activeScript?.roles.find((role) => role.name === setupSeats[selectedSeat]?.role_name)?.description ? (
               <div className="card">
-                <strong>{setupSeats[selectedSeat]?.role_name}</strong>
+                <div className="role-heading">
+                  <RoleIcon iconUrl={activeScript?.roles.find((role) => role.name === setupSeats[selectedSeat]?.role_name)?.icon_url} name={setupSeats[selectedSeat]?.role_name ?? 'Role'} />
+                  <strong>{setupSeats[selectedSeat]?.role_name}</strong>
+                </div>
                 <p className="muted">{activeScript?.roles.find((role) => role.name === setupSeats[selectedSeat]?.role_name)?.description}</p>
               </div>
             ) : null}
@@ -442,18 +472,43 @@ export default function StorytellerDashboard({ auth }: Props) {
           <div className="card">
             <h3>Grimoire</h3>
             <div className="seat-grid">
-              {(state?.players ?? []).map((player) => (
-                <article key={player.discord_user_id} className={`seat ${player.is_alive ? '' : 'dead'}`}>
-                  <strong>{player.display_name}</strong>
-                  <div>Seat {player.seat + 1}</div>
-                  <div>{player.role_name ?? 'Unassigned'}</div>
-                  <div className="muted">{player.alignment ?? 'Alignment hidden'}</div>
-                  <div className="muted">Prompt ready: {player.night_action_prompt ? 'Yes' : 'No'}</div>
-                  <div className="muted">Response: {player.night_action_response ?? 'Waiting'}</div>
-                  <div className="inline-form">
-                    <button className="secondary" onClick={() => setAlive(player.discord_user_id, !player.is_alive)}>
-                      Mark {player.is_alive ? 'Dead' : 'Alive'}
-                    </button>
+              {(state?.players ?? []).map((player) => {
+                const playerRole = player.role_name ? roleMap.get(player.role_name) : undefined;
+                return (
+                  <article key={player.discord_user_id} className={`seat ${player.is_alive ? '' : 'dead'}`}>
+                    <div className="role-heading">
+                      <RoleIcon iconUrl={playerRole?.icon_url} name={player.role_name ?? player.display_name} />
+                      <div>
+                        <strong>{player.display_name}</strong>
+                        <div>Seat {player.seat + 1}</div>
+                      </div>
+                    </div>
+                    <div>{player.role_name ?? 'Unassigned'}</div>
+                    <div className="muted">{player.alignment ?? 'Alignment hidden'}</div>
+                    <div className="muted">Prompt ready: {player.night_action_prompt ? 'Yes' : 'No'}</div>
+                    <div className="muted">Response: {player.night_action_response ?? 'Waiting'}</div>
+                    <div className="inline-form">
+                      <button className="secondary" onClick={() => setAlive(player.discord_user_id, !player.is_alive)}>
+                        Mark {player.is_alive ? 'Dead' : 'Alive'}
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="card stack">
+            <h3>Storyteller Script View</h3>
+            <div className="role-reference-grid compact">
+              {(state?.script_reference?.roles ?? []).map((role) => (
+                <article key={role.name} className="role-reference-card compact">
+                  <div className="role-heading">
+                    <RoleIcon iconUrl={role.icon_url} name={role.name} />
+                    <div>
+                      <strong>{role.name}</strong>
+                      <div className="muted">{role.group} · {role.alignment}</div>
+                    </div>
                   </div>
                 </article>
               ))}

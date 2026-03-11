@@ -12,6 +12,20 @@ type AuthState = {
   };
 };
 
+type RoleReference = {
+  name: string;
+  alignment: string;
+  group: string;
+  description: string;
+  icon_url: string;
+};
+
+type ScriptReference = {
+  id: string;
+  label: string;
+  roles: RoleReference[];
+};
+
 type PlayerRecord = {
   discord_user_id: string;
   display_name: string;
@@ -20,6 +34,7 @@ type PlayerRecord = {
 type PublicState = {
   name: string;
   script: string;
+  script_reference: ScriptReference;
   phase: string;
   players: Array<{
     discord_user_id: string;
@@ -32,6 +47,7 @@ type PublicState = {
 type PlayerState = {
   name: string;
   script: string;
+  script_reference: ScriptReference;
   phase: string;
   players: Array<{
     discord_user_id: string;
@@ -70,6 +86,13 @@ type Props = {
   auth: AuthState;
 };
 
+function RoleIcon({ iconUrl, name }: { iconUrl?: string; name: string }) {
+  if (!iconUrl) {
+    return <div className="role-icon-fallback" aria-hidden="true">{name.slice(0, 1)}</div>;
+  }
+  return <img className="role-icon" src={iconUrl} alt={`${name} icon`} />;
+}
+
 export default function PlayerView({ auth }: Props) {
   const [state, setState] = useState<PlayerState | null>(null);
   const [publicState, setPublicState] = useState<PublicState | null>(null);
@@ -80,6 +103,8 @@ export default function PlayerView({ auth }: Props) {
 
   const isStoryteller = Boolean(auth.user?.is_storyteller);
   const ownPlayerId = auth.user?.is_player ? auth.user.discord_user_id : '';
+  const roleMap = new Map((state?.script_reference?.roles ?? publicState?.script_reference?.roles ?? []).map((role) => [role.name, role]));
+  const viewerRole = state?.viewer?.role_name ? roleMap.get(state.viewer.role_name) : undefined;
 
   const loadPublicState = () => {
     fetch(apiUrl('/api/game/public'), { credentials: 'include' })
@@ -204,19 +229,24 @@ export default function PlayerView({ auth }: Props) {
           <div className="card">
             <h3>Current Table Status</h3>
             <p><strong>Game:</strong> {publicState?.name ?? 'Blood on the Clocktower'}</p>
+            <p><strong>Script:</strong> {publicState?.script_reference?.label ?? publicState?.script ?? 'Unassigned'}</p>
             <p><strong>Phase:</strong> {publicState?.phase ?? 'setup'}</p>
             <p><strong>Seated Players:</strong> {publicState?.players?.length ?? 0}</p>
           </div>
         </div>
 
-        <div className="card">
-          <h3>Who Is Already Seated</h3>
-          <div className="seat-grid">
-            {(publicState?.players ?? []).map((player) => (
-              <article key={player.discord_user_id} className={`seat ${player.is_alive ? '' : 'dead'}`}>
-                <strong>Seat {player.seat + 1}</strong>
-                <div>{player.display_name}</div>
-                <div className="muted">{player.is_alive ? 'Alive' : 'Dead'}</div>
+        <div className="card stack">
+          <h3>Script Reference</h3>
+          <div className="role-reference-grid compact">
+            {(publicState?.script_reference?.roles ?? []).map((role) => (
+              <article key={role.name} className="role-reference-card">
+                <div className="role-heading">
+                  <RoleIcon iconUrl={role.icon_url} name={role.name} />
+                  <div>
+                    <strong>{role.name}</strong>
+                    <div className="muted">{role.group} · {role.alignment}</div>
+                  </div>
+                </div>
               </article>
             ))}
           </div>
@@ -257,11 +287,17 @@ export default function PlayerView({ auth }: Props) {
           {error ? <p>{error}</p> : null}
         </div>
 
-        <div className="card">
+        <div className="card stack">
           <h2>Your Role Sheet</h2>
-          <p><strong>Role:</strong> {state?.viewer?.role_name ?? 'Hidden until storyteller assigns roles'}</p>
-          <p><strong>Alignment:</strong> {state?.viewer?.alignment ?? 'Unknown'}</p>
-          <p><strong>Phase:</strong> {state?.phase ?? 'setup'}</p>
+          <div className="role-heading large">
+            <RoleIcon iconUrl={viewerRole?.icon_url} name={state?.viewer?.role_name ?? 'Role'} />
+            <div>
+              <p><strong>Role:</strong> {state?.viewer?.role_name ?? 'Hidden until storyteller assigns roles'}</p>
+              <p><strong>Alignment:</strong> {state?.viewer?.alignment ?? 'Unknown'}</p>
+              <p><strong>Phase:</strong> {state?.phase ?? 'setup'}</p>
+            </div>
+          </div>
+          {viewerRole?.description ? <p className="muted">{viewerRole.description}</p> : null}
           {isPreview ? <p className="muted">Preview mode is read-only for the storyteller.</p> : null}
         </div>
 
@@ -310,6 +346,25 @@ export default function PlayerView({ auth }: Props) {
                 <strong>Seat {player.seat + 1}</strong>
                 <div>{player.display_name}</div>
                 <div className="muted">{player.is_alive ? 'Alive' : 'Dead'}</div>
+              </article>
+            ))}
+          </div>
+        </div>
+
+        <div className="card stack">
+          <h3>Script Sheet</h3>
+          <p className="muted">All roles for the current script, with icons and reminder text.</p>
+          <div className="role-reference-grid">
+            {(state?.script_reference?.roles ?? []).map((role) => (
+              <article key={role.name} className="role-reference-card">
+                <div className="role-heading">
+                  <RoleIcon iconUrl={role.icon_url} name={role.name} />
+                  <div>
+                    <strong>{role.name}</strong>
+                    <div className="muted">{role.group} · {role.alignment}</div>
+                  </div>
+                </div>
+                <p className="muted">{role.description}</p>
               </article>
             ))}
           </div>

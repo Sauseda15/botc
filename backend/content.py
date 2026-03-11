@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import quote
 
 SCRIPT_DEFINITIONS = {
     'troubles_brewing': {
@@ -41,7 +42,9 @@ ALIGNMENT_BY_GROUP = {
     'demons': 'Evil',
 }
 
-ROLE_DATA_PATH = Path(__file__).resolve().parent / 'discord_bot' / 'utils' / 'role_data.json'
+BASE_DIR = Path(__file__).resolve().parent
+ROLE_DATA_PATH = BASE_DIR / 'discord_bot' / 'utils' / 'role_data.json'
+ROLE_IMAGE_DIR = BASE_DIR / 'discord_bot' / 'utils' / 'photos' / 'role_images'
 
 
 @lru_cache(maxsize=1)
@@ -51,21 +54,33 @@ def load_role_descriptions() -> dict[str, str]:
     return {name: str(description).strip('"') for name, description in raw.items()}
 
 
+@lru_cache(maxsize=1)
+def load_role_icon_map() -> dict[str, str]:
+    payload: dict[str, str] = {}
+    for image_path in ROLE_IMAGE_DIR.glob('*.png'):
+        payload[image_path.stem] = f"/role-icons/{quote(image_path.name)}"
+    return payload
+
+
+def build_role_entry(name: str, group: str, descriptions: dict[str, str], icons: dict[str, str]) -> dict[str, str]:
+    return {
+        'name': name,
+        'alignment': ALIGNMENT_BY_GROUP[group],
+        'group': group,
+        'description': descriptions.get(name, 'No role description available yet.'),
+        'icon_url': icons.get(name, ''),
+    }
+
+
 def get_script_options() -> list[dict[str, object]]:
     descriptions = load_role_descriptions()
+    icons = load_role_icon_map()
     payload: list[dict[str, object]] = []
     for script_id, script in SCRIPT_DEFINITIONS.items():
         roles: list[dict[str, str]] = []
         for group, names in script['roles'].items():
             for name in names:
-                roles.append(
-                    {
-                        'name': name,
-                        'alignment': ALIGNMENT_BY_GROUP[group],
-                        'group': group,
-                        'description': descriptions.get(name, 'No role description available yet.'),
-                    }
-                )
+                roles.append(build_role_entry(name, group, descriptions, icons))
         payload.append(
             {
                 'id': script_id,
@@ -74,6 +89,25 @@ def get_script_options() -> list[dict[str, object]]:
             }
         )
     return payload
+
+
+def get_script_reference(script_id: str) -> dict[str, object]:
+    descriptions = load_role_descriptions()
+    icons = load_role_icon_map()
+    script = SCRIPT_DEFINITIONS.get(script_id)
+    if not script:
+        return {'id': script_id, 'label': script_id, 'roles': []}
+
+    roles: list[dict[str, str]] = []
+    for group, names in script['roles'].items():
+        for name in names:
+            roles.append(build_role_entry(name, group, descriptions, icons))
+
+    return {
+        'id': script_id,
+        'label': script['label'],
+        'roles': roles,
+    }
 
 
 def infer_alignment(script_id: str, role_name: str | None) -> str | None:

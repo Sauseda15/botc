@@ -35,6 +35,10 @@ textarea {
   font: inherit;
 }
 
+img {
+  max-width: 100%;
+}
+
 .app-shell {
   max-width: 1280px;
   margin: 0 auto;
@@ -121,7 +125,8 @@ h3 {
 .row,
 .setup-grid,
 .token-grid,
-.seat-grid {
+.seat-grid,
+.role-reference-grid {
   display: grid;
   gap: 12px;
 }
@@ -139,7 +144,15 @@ h3 {
 }
 
 .token-grid {
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.role-reference-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.role-reference-grid.compact {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
 .seat {
@@ -225,6 +238,53 @@ textarea {
   background: #151515;
   color: var(--text);
   border: 1px solid var(--line);
+}
+
+.role-icon,
+.role-icon-fallback {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid rgba(225, 25, 67, 0.25);
+  background: #0f0f0f;
+  object-fit: cover;
+  flex: 0 0 auto;
+}
+
+.role-icon-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: var(--red-strong);
+}
+
+.role-heading,
+.token-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.role-heading.large {
+  align-items: start;
+}
+
+.role-heading.large .role-icon,
+.role-heading.large .role-icon-fallback {
+  width: 56px;
+  height: 56px;
+}
+
+.role-reference-card {
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--panel-alt);
+  border: 1px solid var(--line);
+}
+
+.role-reference-card.compact {
+  padding: 12px;
 }
 
 @media (max-width: 900px) {

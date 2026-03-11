@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -36,12 +36,17 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(game_router.router)
 
-FRONTEND_DIST = Path(__file__).resolve().parent.parent / 'frontend' / 'dist'
+BASE_DIR = Path(__file__).resolve().parent.parent
+FRONTEND_DIST = BASE_DIR / 'frontend' / 'dist'
 FRONTEND_INDEX = FRONTEND_DIST / 'index.html'
 ASSETS_DIR = FRONTEND_DIST / 'assets'
+ROLE_ICON_DIR = BASE_DIR / 'backend' / 'discord_bot' / 'utils' / 'photos' / 'role_images'
 
 if ASSETS_DIR.exists():
     app.mount('/assets', StaticFiles(directory=ASSETS_DIR), name='frontend-assets')
+
+if ROLE_ICON_DIR.exists():
+    app.mount('/role-icons', StaticFiles(directory=ROLE_ICON_DIR), name='role-icons')
 
 bot_task: asyncio.Task | None = None
 bot_instance = None
@@ -84,7 +89,7 @@ async def root():
 @app.get('/{full_path:path}')
 async def spa_fallback(full_path: str):
     if full_path.startswith('api'):
-        return {'detail': 'Not found'}
+        raise HTTPException(status_code=404, detail='Not found')
     candidate = FRONTEND_DIST / full_path
     if candidate.exists() and candidate.is_file():
         return FileResponse(candidate)
