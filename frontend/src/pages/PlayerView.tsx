@@ -94,6 +94,8 @@ type PlayerState = {
   viewer?: {
     discord_user_id: string;
     display_name: string;
+    seat: number;
+    is_alive: boolean;
     role_name?: string | null;
     alignment?: string | null;
     reminders: string[];
