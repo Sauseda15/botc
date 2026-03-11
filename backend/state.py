@@ -22,6 +22,7 @@ TEST_PLAYER_PREFIX = 'test-player-'
 STATUS_POISONED = 'Poisoned'
 STATUS_DRUNK = 'Drunk'
 STATUS_DIES_AT_DAWN = 'Dies at dawn'
+VOTE_WINDOW_SECONDS = 5
 
 
 def utcnow() -> datetime:
@@ -83,6 +84,7 @@ class GamePlayer:
     is_poisoned: bool = False
     is_drunk: bool = False
     pending_death: bool = False
+    dead_vote_available: bool = True
     night_action_response: str | None = None
     night_action_submitted_at: datetime | None = None
 
@@ -116,6 +118,10 @@ class Nomination:
     nominee_id: str
     opened_at: datetime = field(default_factory=utcnow)
     votes: dict[str, bool] = field(default_factory=dict)
+    vote_order: list[str] = field(default_factory=list)
+    resolved_at: datetime | None = None
+    result_vote_count: int = 0
+    required_votes: int = 0
 
 
 @dataclass
@@ -129,6 +135,10 @@ class GameRecord:
     updated_at: datetime = field(default_factory=utcnow)
     players: dict[str, GamePlayer] = field(default_factory=dict)
     current_nomination: Nomination | None = None
+    execution_candidate_id: str | None = None
+    execution_candidate_votes: int = 0
+    nominators_today: list[str] = field(default_factory=list)
+    nominees_today: list[str] = field(default_factory=list)
     log_entries: list[str] = field(default_factory=list)
     night_feed: list[str] = field(default_factory=list)
     night_count: int = 0
@@ -238,8 +248,10 @@ class GameStore:
             'is_poisoned': player.is_poisoned,
             'is_drunk': player.is_drunk,
             'pending_death': player.pending_death,
+            'dead_vote_available': player.dead_vote_available,
             'night_action_response': player.night_action_response,
             'night_action_submitted_at': player.night_action_submitted_at.isoformat() if player.night_action_submitted_at else None,
+                'dead_vote_available': player.dead_vote_available,
         }
 
     def _serialize_night_step_snapshot(self, step: NightStep) -> dict[str, Any]:
@@ -273,6 +285,10 @@ class GameStore:
             'nominee_id': nomination.nominee_id,
             'opened_at': nomination.opened_at.isoformat(),
             'votes': nomination.votes,
+            'vote_order': nomination.vote_order,
+            'resolved_at': nomination.resolved_at.isoformat() if nomination.resolved_at else None,
+            'result_vote_count': nomination.result_vote_count,
+            'required_votes': nomination.required_votes,
         }
 
     def _snapshot_payload_locked(self) -> dict[str, Any]:
@@ -287,6 +303,10 @@ class GameStore:
                 'updated_at': self._game.updated_at.isoformat(),
                 'players': {player_id: self._serialize_game_player_snapshot(player) for player_id, player in self._game.players.items()},
                 'current_nomination': self._serialize_nomination_snapshot(self._game.current_nomination),
+                'execution_candidate_id': self._game.execution_candidate_id,
+                'execution_candidate_votes': self._game.execution_candidate_votes,
+                'nominators_today': self._game.nominators_today,
+                'nominees_today': self._game.nominees_today,
                 'log_entries': self._game.log_entries,
                 'night_feed': self._game.night_feed,
                 'night_count': self._game.night_count,
@@ -319,6 +339,10 @@ class GameStore:
                 nominee_id=nomination_payload['nominee_id'],
                 opened_at=parse_dt(nomination_payload.get('opened_at')) or utcnow(),
                 votes={str(key): bool(value) for key, value in (nomination_payload.get('votes') or {}).items()},
+                vote_order=[str(player_id) for player_id in (nomination_payload.get('vote_order') or [])],
+                resolved_at=parse_dt(nomination_payload.get('resolved_at')),
+                result_vote_count=int(nomination_payload.get('result_vote_count', 0)),
+                required_votes=int(nomination_payload.get('required_votes', 0)),
             )
 
         self._game = GameRecord(
@@ -347,12 +371,17 @@ class GameStore:
                         *([STATUS_DRUNK] if player_snapshot.get('is_drunk') else []),
                         *([STATUS_DIES_AT_DAWN] if player_snapshot.get('pending_death') else []),
                     ]),
+                    dead_vote_available=bool(player_snapshot.get('dead_vote_available', True)),
                     night_action_response=player_snapshot.get('night_action_response'),
-                    night_action_submitted_at=parse_dt(player_snapshot.get('night_action_submitted_at')),
+                    night_action_submitted_at=parse_dt(player_snapshot.get('night_action_submitted_at')), 
                 )
                 for player_id, player_snapshot in players_payload.items()
             },
             current_nomination=current_nomination,
+            execution_candidate_id=game_payload.get('execution_candidate_id'),
+            execution_candidate_votes=int(game_payload.get('execution_candidate_votes', 0)),
+            nominators_today=[str(player_id) for player_id in (game_payload.get('nominators_today') or [])],
+            nominees_today=[str(player_id) for player_id in (game_payload.get('nominees_today') or [])],
             log_entries=list(game_payload.get('log_entries', [])),
             night_feed=list(game_payload.get('night_feed', [])),
             night_count=int(game_payload.get('night_count', 0)),
@@ -941,24 +970,122 @@ class GameStore:
                     dawn_deaths = self._apply_pending_deaths_locked(actor_id)
                     if dawn_deaths:
                         self._game.night_feed.append('Dawn deaths: ' + ', '.join(dawn_deaths))
+                    self._game.current_nomination = None
+                    self._game.execution_candidate_id = None
+                    self._game.execution_candidate_votes = 0
+                    self._game.nominators_today = []
+                    self._game.nominees_today = []
                 self._clear_night_state_locked()
             self._game.log_entries.append(f'{actor_id} moved the game to {phase.value}.')
             self._touch()
             return self._game
 
+    def _build_vote_order_locked(self, nominee_id: str) -> list[str]:
+        ordered_players = sorted(self._game.players.values(), key=lambda player: player.seat)
+        if not ordered_players:
+            return []
+        nominee = self._game.players[nominee_id]
+        start_index = next((index for index, player in enumerate(ordered_players) if player.discord_user_id == nominee_id), 0)
+        return [ordered_players[(start_index + 1 + offset) % len(ordered_players)].discord_user_id for offset in range(len(ordered_players))]
+
+    def _refresh_nomination_locked(self) -> None:
+        nomination = self._game.current_nomination
+        if not nomination or nomination.resolved_at is not None:
+            return
+        elapsed_windows = int((utcnow() - nomination.opened_at).total_seconds() // VOTE_WINDOW_SECONDS)
+        if elapsed_windows >= len(nomination.vote_order):
+            self._finalize_nomination_locked()
+
+    def _finalize_nomination_locked(self) -> None:
+        nomination = self._game.current_nomination
+        if not nomination or nomination.resolved_at is not None:
+            return
+        yes_votes = sum(1 for player_id, approved in nomination.votes.items() if approved and player_id in nomination.vote_order)
+        nomination.result_vote_count = yes_votes
+        nomination.required_votes = (len(self._game.players) + 1) // 2
+        nomination.resolved_at = utcnow()
+
+        nominee_name = self._game.players[nomination.nominee_id].display_name if nomination.nominee_id in self._game.players else nomination.nominee_id
+        if yes_votes < nomination.required_votes:
+            self._game.log_entries.append(f'Nomination on {nominee_name} failed with {yes_votes} yes vote(s).')
+            return
+
+        if yes_votes > self._game.execution_candidate_votes:
+            self._game.execution_candidate_id = nomination.nominee_id
+            self._game.execution_candidate_votes = yes_votes
+            self._game.log_entries.append(f'{nominee_name} now leads execution with {yes_votes} vote(s).')
+            return
+
+        if yes_votes == self._game.execution_candidate_votes:
+            self._game.execution_candidate_id = None
+            self._game.log_entries.append(f'Execution is currently tied at {yes_votes} vote(s); no one is marked for execution.')
+            return
+
+        self._game.log_entries.append(f'Nomination on {nominee_name} reached {yes_votes} vote(s), short of the current execution lead.')
+
+    def _current_voter_locked(self, nomination: Nomination | None) -> tuple[str | None, int]:
+        if not nomination or nomination.resolved_at is not None:
+            return None, 0
+        elapsed_seconds = max(0, int((utcnow() - nomination.opened_at).total_seconds()))
+        current_index = elapsed_seconds // VOTE_WINDOW_SECONDS
+        if current_index >= len(nomination.vote_order):
+            return None, 0
+        remaining = VOTE_WINDOW_SECONDS - (elapsed_seconds % VOTE_WINDOW_SECONDS)
+        return nomination.vote_order[current_index], remaining
+
     def set_nomination(self, actor_id: str, nominator_id: str, nominee_id: str) -> Nomination:
         with self._lock:
-            self._game.current_nomination = Nomination(
+            if self._game.phase != GamePhase.DAY:
+                raise ValueError('Nominations can only be opened during the day.')
+            self._refresh_nomination_locked()
+            if self._game.current_nomination and self._game.current_nomination.resolved_at is None:
+                raise ValueError('Wait for the current vote to finish before opening another nomination.')
+            if nominator_id in self._game.nominators_today:
+                raise ValueError('That player has already nominated today.')
+            if nominee_id in self._game.nominees_today:
+                raise ValueError('That player has already been nominated today.')
+            if nominator_id not in self._game.players or nominee_id not in self._game.players:
+                raise KeyError('Both players must be seated in the current game.')
+
+            nomination = Nomination(
                 nominator_id=nominator_id,
                 nominee_id=nominee_id,
+                vote_order=self._build_vote_order_locked(nominee_id),
             )
-            self._game.log_entries.append(
-                f'{actor_id} opened a nomination: {nominator_id} -> {nominee_id}.'
-            )
+            self._game.current_nomination = nomination
+            self._game.nominators_today.append(nominator_id)
+            self._game.nominees_today.append(nominee_id)
+            self._game.log_entries.append(f'{actor_id} opened a nomination: {nominator_id} -> {nominee_id}.')
             self._touch()
-            return self._game.current_nomination
+            return nomination
 
     def cast_vote(self, voter_id: str, approve: bool) -> Nomination:
+        with self._lock:
+            if voter_id not in self._game.players:
+                raise KeyError('Player is not seated in the current game.')
+            self._refresh_nomination_locked()
+            nomination = self._game.current_nomination
+            if not nomination:
+                raise ValueError('There is no active nomination.')
+            if nomination.resolved_at is not None:
+                raise ValueError('This vote is already locked in.')
+
+            current_voter_id, _ = self._current_voter_locked(nomination)
+            if current_voter_id != voter_id:
+                raise ValueError('It is not your turn in the public vote order.')
+
+            player = self._game.players[voter_id]
+            if approve and not player.is_alive and not player.dead_vote_available:
+                raise ValueError('Dead players only have one yes vote after death.')
+
+            nomination.votes[voter_id] = approve
+            if approve and not player.is_alive:
+                player.dead_vote_available = False
+
+            vote_label = 'yes' if approve else 'no'
+            self._game.log_entries.append(f'{player.display_name} locked in a {vote_label} vote.')
+            self._touch()
+            return nomination
         with self._lock:
             if voter_id not in self._game.players:
                 raise KeyError('Player is not seated in the current game.')
@@ -1303,18 +1430,27 @@ class GameStore:
         }
 
     def serialize_nomination(self) -> dict[str, Any] | None:
+        self._refresh_nomination_locked()
         nomination = self._game.current_nomination
         if not nomination:
             return None
+        current_voter_id, seconds_remaining = self._current_voter_locked(nomination)
         return {
             'nominator_id': nomination.nominator_id,
             'nominee_id': nomination.nominee_id,
             'opened_at': nomination.opened_at.isoformat(),
             'votes': nomination.votes,
+            'vote_order': nomination.vote_order,
+            'current_voter_id': current_voter_id,
+            'seconds_remaining': seconds_remaining,
+            'resolved_at': nomination.resolved_at.isoformat() if nomination.resolved_at else None,
+            'result_vote_count': nomination.result_vote_count,
+            'required_votes': nomination.required_votes,
         }
 
     def get_public_state(self) -> dict[str, Any]:
         with self._lock:
+            self._refresh_nomination_locked()
             players = sorted(self._game.players.values(), key=lambda player: player.seat)
             return {
                 'game_id': self._game.game_id,
@@ -1324,6 +1460,8 @@ class GameStore:
                 'phase': self._game.phase.value,
                 'players': [self._serialize_player_public(player) for player in players],
                 'current_nomination': self.serialize_nomination(),
+                'execution_candidate_id': self._game.execution_candidate_id,
+                'execution_candidate_votes': self._game.execution_candidate_votes,
                 'log_entries': self._game.log_entries[-20:],
             }
 
@@ -1389,6 +1527,8 @@ class GameStore:
                 'players': [self._serialize_player_storyteller(player) for player in players],
                 'lobby_players': [self._serialize_lobby_player(player) for player in lobby_players],
                 'current_nomination': self.serialize_nomination(),
+                'execution_candidate_id': self._game.execution_candidate_id,
+                'execution_candidate_votes': self._game.execution_candidate_votes,
                 'log_entries': self._game.log_entries[-50:],
                 'night_feed': self._game.night_feed[-50:],
                 'night_steps': [self._serialize_night_step(step) for step in self._game.night_steps],
@@ -1399,6 +1539,10 @@ class GameStore:
 
 
 store = GameStore()
+
+
+
+
 
 
 

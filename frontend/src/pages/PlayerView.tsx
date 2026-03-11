@@ -62,6 +62,19 @@ type PublicState = {
     seat: number;
     is_alive: boolean;
   }>;
+  current_nomination?: {
+    nominator_id: string;
+    nominee_id: string;
+    votes: Record<string, boolean>;
+    vote_order: string[];
+    current_voter_id?: string | null;
+    seconds_remaining: number;
+    resolved_at?: string | null;
+    result_vote_count: number;
+    required_votes: number;
+  } | null;
+  execution_candidate_id?: string | null;
+  execution_candidate_votes?: number;
 };
 
 type PlayerState = {
@@ -75,6 +88,9 @@ type PlayerState = {
     seat: number;
     is_alive: boolean;
   }>;
+  current_nomination?: PublicState['current_nomination'];
+  execution_candidate_id?: string | null;
+  execution_candidate_votes?: number;
   viewer?: {
     discord_user_id: string;
     display_name: string;
@@ -87,6 +103,7 @@ type PlayerState = {
     status_markers?: string[];
     night_action_response?: string | null;
     night_action_submitted_at?: string | null;
+    dead_vote_available?: boolean;
   };
   viewer_evil_team?: Array<{
     discord_user_id: string;
@@ -159,6 +176,11 @@ export default function PlayerView({ auth }: Props) {
   const viewerGrimoire = state?.viewer_grimoire ?? null;
   const viewerDemonBluffs = state?.viewer_demon_bluffs ?? [];
   const viewerEvilTeam = state?.viewer_evil_team ?? [];
+  const nominationState = state?.current_nomination ?? publicState?.current_nomination ?? null;
+  const executionCandidateId = state?.execution_candidate_id ?? publicState?.execution_candidate_id ?? null;
+  const executionCandidateVotes = state?.execution_candidate_votes ?? publicState?.execution_candidate_votes ?? 0;
+  const playerNameById = new Map((state?.players ?? publicState?.players ?? []).map((player) => [player.discord_user_id, player.display_name]));
+  const pollIntervalMs = nominationState && !nominationState.resolved_at ? 1000 : 4000;
 
   const selectablePlayers = state?.players.filter((player) => {
     if (currentNightStep?.allow_self === false && player.discord_user_id === state?.viewer?.discord_user_id) {
@@ -272,9 +294,9 @@ export default function PlayerView({ auth }: Props) {
       }
     };
 
-    const timer = window.setInterval(refresh, 4000);
+    const timer = window.setInterval(refresh, pollIntervalMs);
     return () => window.clearInterval(timer);
-  }, [auth.authenticated, ownPlayerId, selectedPlayerId, isStoryteller, storytellerPlayers]);
+  }, [auth.authenticated, ownPlayerId, selectedPlayerId, isStoryteller, storytellerPlayers, pollIntervalMs]);
 
   useEffect(() => {
     if (currentNightStep?.input_type !== 'player_select') {
@@ -381,6 +403,11 @@ export default function PlayerView({ auth }: Props) {
   const needsPlayerSelect = currentNightStep?.input_type === 'player_select';
   const hasAllTargets = !needsPlayerSelect || selectedTargets.filter(Boolean).length === activeTargetCount;
   const canSignalGrimoireReady = Boolean(viewerGrimoire) && Boolean(isViewerTurn);
+  const currentVoterId = nominationState?.current_voter_id ?? null;
+  const isCurrentVoter = currentVoterId === state?.viewer?.discord_user_id;
+  const nomineeName = nominationState?.nominee_id ? playerNameById.get(nominationState.nominee_id) ?? nominationState.nominee_id : null;
+  const nominatorName = nominationState?.nominator_id ? playerNameById.get(nominationState.nominator_id) ?? nominationState.nominator_id : null;
+  const executionCandidateName = executionCandidateId ? playerNameById.get(executionCandidateId) ?? executionCandidateId : null;
 
   return (
     <section className="panel split">
@@ -591,16 +618,36 @@ export default function PlayerView({ auth }: Props) {
 
         <div className="card stack">
           <h3>Voting</h3>
-          <div className="inline-form">
-            <button className="primary" onClick={() => castVote(true)} disabled={isPreview}>Vote Yes</button>
-            <button className="secondary" onClick={() => castVote(false)} disabled={isPreview}>Vote No</button>
-            <button className="secondary" onClick={() => load()}>Refresh</button>
-          </div>
+          {nominationState ? (
+            <>
+              <p><strong>Nominator:</strong> {nominatorName ?? 'Unknown'}<br /><strong>Nominee:</strong> {nomineeName ?? 'Unknown'}</p>
+              {nominationState.resolved_at ? (
+                <p className="muted">Vote locked: {nominationState.result_vote_count} yes vote(s). {nominationState.result_vote_count >= nominationState.required_votes ? 'The nomination reached the execution threshold.' : 'The nomination failed to reach the execution threshold.'}</p>
+              ) : (
+                <p className="muted">Current voter: {currentVoterId ? (playerNameById.get(currentVoterId) ?? currentVoterId) : 'Locking votes'} · {nominationState.seconds_remaining}s remaining</p>
+              )}
+              {executionCandidateName ? <p className="muted">Currently marked for execution: {executionCandidateName} ({executionCandidateVotes} vote(s))</p> : <p className="muted">No player is currently marked for execution.</p>}
+              <div className="inline-form">
+                <button className="primary" onClick={() => castVote(true)} disabled={isPreview || !isCurrentVoter || Boolean(nominationState.resolved_at) || (!state?.viewer?.is_alive && !state?.viewer?.dead_vote_available)}>Vote Yes</button>
+                <button className="secondary" onClick={() => castVote(false)} disabled={isPreview || !isCurrentVoter || Boolean(nominationState.resolved_at)}>Vote No</button>
+                <button className="secondary" onClick={() => load()}>Refresh</button>
+              </div>
+              {!state?.viewer?.is_alive ? <p className="muted">Dead vote token: {state?.viewer?.dead_vote_available ? 'Available' : 'Already used'}</p> : null}
+            </>
+          ) : (
+            <>
+              {executionCandidateName ? <p className="muted">Currently marked for execution: {executionCandidateName} ({executionCandidateVotes} vote(s))</p> : <p className="muted">No nomination is active right now.</p>}
+              <button className="secondary" onClick={() => load()}>Refresh</button>
+            </>
+          )}
         </div>
       </div>
     </section>
   );
 }
+
+
+
 
 
 
