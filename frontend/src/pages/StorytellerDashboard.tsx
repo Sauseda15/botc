@@ -198,7 +198,10 @@ export default function StorytellerDashboard({ auth }: Props) {
   const canCreateGame = filledSeats === playerCount && assignedSeats === playerCount;
   const currentNightStep = state?.current_night_step ?? null;
   const availableStatuses = state?.available_statuses ?? ['Poisoned', 'Drunk', 'Dies at dawn'];
-  const availableDemonBluffs = state?.available_demon_bluffs ?? [];
+  const selectedSeatRole = setupSeats[selectedSeat]?.role_name ?? null;
+  const assignedRoleNames = new Set(setupSeats.filter((seat) => seat.role_name && seat.role_name !== selectedSeatRole).map((seat) => seat.role_name as string));
+  const availableSetupRoles = (activeScript?.roles ?? []).filter((role) => !assignedRoleNames.has(role.name) || role.name === selectedSeatRole);
+  const availableSetupBluffNames = (activeScript?.roles ?? []).filter((role) => !setupSeats.some((seat) => seat.role_name === role.name)).map((role) => role.name);
   const occupiedSeats = new Set((state?.players ?? []).map((player) => player.seat));
   const emptySeats = Array.from({ length: playerCount }, (_, index) => index).filter((seat) => !occupiedSeats.has(seat));
 
@@ -212,7 +215,6 @@ export default function StorytellerDashboard({ auth }: Props) {
       })
       .then((payload: StorytellerState) => {
         setState(payload);
-        setDemonBluffsDraft([payload.demon_bluffs?.[0] ?? '', payload.demon_bluffs?.[1] ?? '', payload.demon_bluffs?.[2] ?? '']);
         setError('');
       })
       .catch((err: Error) => setError(err.message));
@@ -239,6 +241,18 @@ export default function StorytellerDashboard({ auth }: Props) {
     setSetupSeats((current) => hydrateSeats(current, lobbyPlayers, playerCount));
     setSelectedSeat((current) => Math.min(current, Math.max(playerCount - 1, 0)));
   }, [playerCount, lobbyPlayers]);
+
+  useEffect(() => {
+    setDemonBluffsDraft((current) => {
+      const preserved = current.filter((roleName) => roleName && availableSetupBluffNames.includes(roleName));
+      const filler = availableSetupBluffNames.filter((roleName) => !preserved.includes(roleName));
+      const next = [...preserved, ...filler].slice(0, 3);
+      while (next.length < 3) {
+        next.push('');
+      }
+      return next;
+    });
+  }, [availableSetupBluffNames]);
 
   const updateSeat = (seatIndex: number, patch: Partial<SetupSeat>) => {
     setSetupSeats((current) =>
@@ -304,25 +318,6 @@ export default function StorytellerDashboard({ auth }: Props) {
     setError(payload.detail ?? 'Unable to seat lobby player.');
   };
 
-  const saveDemonBluffs = async () => {
-    const response = await fetch(apiUrl('/api/game/storyteller/demon-bluffs'), {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bluffs: demonBluffsDraft.filter(Boolean) }),
-    });
-
-    if (response.ok) {
-      const payload = await response.json();
-      setState(payload);
-      setDemonBluffsDraft([payload.demon_bluffs?.[0] ?? '', payload.demon_bluffs?.[1] ?? '', payload.demon_bluffs?.[2] ?? '']);
-      setError('');
-      return;
-    }
-
-    const payload = await response.json().catch(() => ({}));
-    setError(payload.detail ?? 'Unable to save demon bluffs.');
-  };
   const submitSetup = async () => {
     if (playersNeeded > 0) {
       setError(`You need ${playersNeeded} more logged-in player${playersNeeded === 1 ? '' : 's'} before starting this game.`);
@@ -343,6 +338,7 @@ export default function StorytellerDashboard({ auth }: Props) {
         name: gameName,
         script: scriptId,
         players: setupSeats,
+        demon_bluffs: demonBluffsDraft.filter(Boolean),
       }),
     });
 
@@ -542,7 +538,7 @@ export default function StorytellerDashboard({ auth }: Props) {
 
         <div className="card stack">
           <h3>Demon Bluffs</h3>
-          <p className="muted">Pick up to 3 out-of-play roles to show the demon on their player page.</p>
+          <p className="muted">Bluffs come from the remaining unassigned roles. Reassigning a token updates this pool automatically.</p>
           <div className="row">
             {[0, 1, 2].map((index) => (
               <select key={index} value={demonBluffsDraft[index] ?? ''} onChange={(event) => {
@@ -551,16 +547,15 @@ export default function StorytellerDashboard({ auth }: Props) {
                 setDemonBluffsDraft(next);
               }}>
                 <option value="">No bluff</option>
-                {availableDemonBluffs.map((roleName) => (
-                  <option key={`${index}-${roleName}`} value={roleName}>{roleName}</option>
-                ))}
+                {availableSetupBluffNames
+                  .filter((roleName) => roleName === (demonBluffsDraft[index] ?? '') || !demonBluffsDraft.includes(roleName))
+                  .map((roleName) => (
+                    <option key={`${index}-${roleName}`} value={roleName}>{roleName}</option>
+                  ))}
               </select>
             ))}
           </div>
-          <div className="muted">Current bluffs: {(state?.demon_bluffs ?? []).length ? state?.demon_bluffs?.join(' · ') : 'None set'}</div>
-          <div className="inline-form">
-            <button className="primary" onClick={saveDemonBluffs}>Save Demon Bluffs</button>
-          </div>
+          <div className="muted">Bluffs saved with this setup: {demonBluffsDraft.filter(Boolean).length ? demonBluffsDraft.filter(Boolean).join(' · ') : 'None selected'}</div>
         </div>
 
         <div className="setup-grid">
@@ -599,7 +594,7 @@ export default function StorytellerDashboard({ auth }: Props) {
           <div className="stack">
             <h3>Playable Tokens</h3>
             <div className="token-grid">
-              {(activeScript?.roles ?? []).map((role) => (
+              {availableSetupRoles.map((role) => (
                 <button key={role.name} className={`token-button ${setupSeats[selectedSeat]?.role_name === role.name ? 'active' : ''}`} onClick={() => assignRoleToSeat(role)}>
                   <span className="token-heading">
                     <RoleIcon iconUrl={role.icon_url} name={role.name} />
@@ -803,6 +798,7 @@ export default function StorytellerDashboard({ auth }: Props) {
     </section>
   );
 }
+
 
 
 

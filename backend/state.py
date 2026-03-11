@@ -851,6 +851,7 @@ class GameStore:
         game_name: str,
         script: str,
         players: list[dict[str, Any]],
+        demon_bluffs: list[str] | None = None,
     ) -> GameRecord:
         with self._lock:
             player_map: dict[str, GamePlayer] = {}
@@ -881,6 +882,19 @@ class GameStore:
                 self._sync_player_status_flags_locked(player_map[discord_user_id])
                 self._lobby_players.pop(discord_user_id, None)
 
+            in_play_roles = {player.role_name for player in player_map.values() if player.role_name}
+            allowed_bluffs = [role_name for role_name in get_script_role_names(script) if role_name not in in_play_roles]
+            cleaned_bluffs: list[str] = []
+            seen_bluffs: set[str] = set()
+            for bluff in demon_bluffs or []:
+                name = str(bluff).strip()
+                if not name or name in seen_bluffs or name not in allowed_bluffs:
+                    continue
+                cleaned_bluffs.append(name)
+                seen_bluffs.add(name)
+                if len(cleaned_bluffs) == 3:
+                    break
+
             self._game = GameRecord(
                 game_id=str(uuid.uuid4()),
                 name=game_name,
@@ -889,7 +903,7 @@ class GameStore:
                 storyteller_id=storyteller_id,
                 players=player_map,
                 log_entries=[f'Game created by storyteller {storyteller_id}.'],
-                demon_bluffs=[],
+                demon_bluffs=cleaned_bluffs,
             )
             self._clear_night_state_locked(clear_storyteller_message=True)
             self._persist_locked()
@@ -1288,6 +1302,7 @@ class GameStore:
 
 
 store = GameStore()
+
 
 
 

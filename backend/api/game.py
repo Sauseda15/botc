@@ -27,6 +27,7 @@ class CreateGameRequest(BaseModel):
     name: str = 'Blood on the Clocktower'
     script: str = 'troubles_brewing'
     players: list[PlayerInput] = Field(default_factory=list)
+    demon_bluffs: list[str] = Field(default_factory=list)
 
 
 class PhaseUpdateRequest(BaseModel):
@@ -143,6 +144,7 @@ async def create_game(payload: CreateGameRequest, session: WebSession = Depends(
         game_name=payload.name,
         script=payload.script,
         players=[player.model_dump() for player in payload.players],
+        demon_bluffs=payload.demon_bluffs,
     )
     return {
         'status': 'ok',
@@ -300,6 +302,7 @@ async def signal_night_ready(payload: NightReadyRequest, session: WebSession = D
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return store.get_player_state(target_player_id, viewer_id=session.discord_user_id)
+
 
 
 
