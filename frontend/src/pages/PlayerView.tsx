@@ -114,7 +114,13 @@ type Props = {
   auth: AuthState;
 };
 
-function RoleIcon({ iconUrl, name, variant = "default"}) {
+type RoleIconProps = {
+    iconUrl?: string | null;
+    name: string;
+    variant?: "default" | "player";
+};
+
+function RoleIcon({ iconUrl, name, variant = "default"}: RoleIconProps) {
     if (!iconUrl) return null;
 
     return (
