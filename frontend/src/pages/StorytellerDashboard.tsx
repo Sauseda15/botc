@@ -100,8 +100,17 @@ type StorytellerState = {
   current_nomination?: {
     nominator_id: string;
     nominee_id: string;
+    opened_at: string;
     votes: Record<string, boolean>;
+    vote_order: string[];
+    current_voter_id?: string | null;
+    seconds_remaining: number;
+    resolved_at?: string | null;
+    result_vote_count: number;
+    required_votes: number;
   } | null;
+  execution_candidate_id?: string | null;
+  execution_candidate_votes?: number;
   current_night_step?: NightStep | null;
   night_steps: NightStep[];
   log_entries: string[];
@@ -183,6 +192,7 @@ export default function StorytellerDashboard({ auth }: Props) {
   const [error, setError] = useState('');
   const [liveSeatDraft, setLiveSeatDraft] = useState({ discord_user_id: '', seat: '0' });
   const [demonBluffsDraft, setDemonBluffsDraft] = useState<string[]>(['', '', '']);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   const activeScript = useMemo(
     () => scripts.find((script) => script.id === scriptId) ?? scripts[0],
@@ -204,6 +214,9 @@ export default function StorytellerDashboard({ auth }: Props) {
   const availableSetupBluffNames = (activeScript?.roles ?? []).filter((role) => !setupSeats.some((seat) => seat.role_name === role.name)).map((role) => role.name);
   const occupiedSeats = new Set((state?.players ?? []).map((player) => player.seat));
   const emptySeats = Array.from({ length: playerCount }, (_, index) => index).filter((seat) => !occupiedSeats.has(seat));
+  const nominationState = state?.current_nomination ?? null;
+  const liveVoteSecondsRemaining = nominationState && !nominationState.resolved_at ? Math.max(0, 5 - (Math.floor((nowMs - new Date(nominationState.opened_at).getTime()) / 1000) % 5)) : nominationState?.seconds_remaining ?? 0;
+  const storytellerPlayerNameById = new Map((state?.players ?? []).map((player) => [player.discord_user_id, player.display_name]));
 
   const load = () => {
     fetch(apiUrl('/api/game/storyteller'), { credentials: 'include' })
@@ -220,6 +233,11 @@ export default function StorytellerDashboard({ auth }: Props) {
       .catch((err: Error) => setError(err.message));
   };
 
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
   useEffect(() => {
     fetch(apiUrl('/api/game/setup-options'), { credentials: 'include' })
       .then((response) => response.json())
@@ -708,6 +726,12 @@ export default function StorytellerDashboard({ auth }: Props) {
               ))}
             </select>
             <button className="primary" onClick={openNomination}>Open Nomination</button>
+            {nominationState ? (
+              <div className="muted">
+                Live vote: {storytellerPlayerNameById.get(nominationState.nominator_id) ?? nominationState.nominator_id} nominating {storytellerPlayerNameById.get(nominationState.nominee_id) ?? nominationState.nominee_id}. {nominationState.resolved_at ? `Locked at ${nominationState.result_vote_count} yes.` : `Current voter: ${nominationState.current_voter_id ? (storytellerPlayerNameById.get(nominationState.current_voter_id) ?? nominationState.current_voter_id) : 'Locking votes'} · ${liveVoteSecondsRemaining}s remaining.`}
+              </div>
+            ) : null}
+            {state?.execution_candidate_id ? <div className="muted">Marked for execution: {storytellerPlayerNameById.get(state.execution_candidate_id) ?? state.execution_candidate_id} ({state.execution_candidate_votes ?? 0} vote(s))</div> : null}
           </div>
         </div>
 
@@ -798,6 +822,8 @@ export default function StorytellerDashboard({ auth }: Props) {
     </section>
   );
 }
+
+
 
 
 

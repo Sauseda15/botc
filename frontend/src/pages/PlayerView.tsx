@@ -166,6 +166,7 @@ export default function PlayerView({ auth }: Props) {
   const [selectedTargets, setSelectedTargets] = useState<string[]>([]);
   const [storytellerPlayers, setStorytellerPlayers] = useState<PlayerRecord[]>([]);
   const [selectedPlayerId, setSelectedPlayerId] = useState('');
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const draftDirtyRef = useRef(false);
   const lastStepIdRef = useRef<string | null>(null);
 
@@ -183,6 +184,7 @@ export default function PlayerView({ auth }: Props) {
   const executionCandidateVotes = state?.execution_candidate_votes ?? publicState?.execution_candidate_votes ?? 0;
   const playerNameById = new Map((state?.players ?? publicState?.players ?? []).map((player) => [player.discord_user_id, player.display_name]));
   const pollIntervalMs = nominationState && !nominationState.resolved_at ? 1000 : 4000;
+  const liveSecondsRemaining = nominationState && !nominationState.resolved_at ? Math.max(0, 5 - (Math.floor((nowMs - new Date(nominationState.opened_at).getTime()) / 1000) % 5)) : nominationState?.seconds_remaining ?? 0;
 
   const selectablePlayers = state?.players.filter((player) => {
     if (currentNightStep?.allow_self === false && player.discord_user_id === state?.viewer?.discord_user_id) {
@@ -239,6 +241,11 @@ export default function PlayerView({ auth }: Props) {
       .catch((err: Error) => setError(err.message));
   };
 
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
   useEffect(() => {
     if (!auth.authenticated || !isStoryteller) {
       return;
@@ -626,7 +633,7 @@ export default function PlayerView({ auth }: Props) {
               {nominationState.resolved_at ? (
                 <p className="muted">Vote locked: {nominationState.result_vote_count} yes vote(s). {nominationState.result_vote_count >= nominationState.required_votes ? 'The nomination reached the execution threshold.' : 'The nomination failed to reach the execution threshold.'}</p>
               ) : (
-                <p className="muted">Current voter: {currentVoterId ? (playerNameById.get(currentVoterId) ?? currentVoterId) : 'Locking votes'} · {nominationState.seconds_remaining}s remaining</p>
+                <p className="muted">Current voter: {currentVoterId ? (playerNameById.get(currentVoterId) ?? currentVoterId) : 'Locking votes'} · {liveSecondsRemaining}s remaining</p>
               )}
               {executionCandidateName ? <p className="muted">Currently marked for execution: {executionCandidateName} ({executionCandidateVotes} vote(s))</p> : <p className="muted">No player is currently marked for execution.</p>}
               <div className="inline-form">
@@ -647,6 +654,8 @@ export default function PlayerView({ auth }: Props) {
     </section>
   );
 }
+
+
 
 
 
