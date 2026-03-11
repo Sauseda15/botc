@@ -13,7 +13,7 @@ from psycopg import connect
 from psycopg.rows import dict_row
 
 from config import settings
-from content import build_night_prompt, get_game_status_options, get_role_night_template, get_script_reference, get_script_role_names, infer_alignment, is_demon_role
+from content import build_night_prompt, get_game_status_options, get_role_group, get_role_night_template, get_script_reference, get_script_role_names, infer_alignment, is_demon_role
 
 
 UTC = timezone.utc
@@ -1308,12 +1308,37 @@ class GameStore:
                 'log_entries': self._game.log_entries[-20:],
             }
 
+    def _serialize_evil_team_locked(self, viewer: GamePlayer) -> list[dict[str, str]]:
+        if self._game.phase != GamePhase.NIGHT or len(self._game.players) < 8:
+            return []
+        viewer_group = get_role_group(self._game.script, viewer.role_name)
+        if viewer.alignment != 'Evil' or viewer_group not in {'minions', 'demons'}:
+            return []
+
+        entries: list[dict[str, str]] = []
+        for player in sorted(self._game.players.values(), key=lambda item: item.seat):
+            if player.discord_user_id == viewer.discord_user_id or player.alignment != 'Evil':
+                continue
+            group = get_role_group(self._game.script, player.role_name)
+            if group not in {'minions', 'demons'}:
+                continue
+            entries.append(
+                {
+                    'discord_user_id': player.discord_user_id,
+                    'display_name': player.display_name,
+                    'seat_label': f'Seat {player.seat + 1}',
+                    'team_role': 'Demon' if group == 'demons' else 'Minion',
+                }
+            )
+        return entries
+
     def get_player_state(self, discord_user_id: str, viewer_id: str | None = None) -> dict[str, Any]:
         with self._lock:
             player = self._game.players[discord_user_id]
             public_state = self.get_public_state()
             current_step = self._get_night_step_locked(self._game.active_night_step_id)
             public_state['viewer'] = self._serialize_player_private(player)
+            public_state['viewer_evil_team'] = self._serialize_evil_team_locked(player)
             public_state['viewer_context'] = {
                 'requested_player_id': discord_user_id,
                 'viewer_id': viewer_id or discord_user_id,
@@ -1355,6 +1380,7 @@ class GameStore:
 
 
 store = GameStore()
+
 
 
 

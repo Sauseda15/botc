@@ -88,6 +88,12 @@ type PlayerState = {
     night_action_response?: string | null;
     night_action_submitted_at?: string | null;
   };
+  viewer_evil_team?: Array<{
+    discord_user_id: string;
+    display_name: string;
+    seat_label: string;
+    team_role: string;
+  }>;
   viewer_context?: {
     requested_player_id: string;
     viewer_id: string;
@@ -152,6 +158,7 @@ export default function PlayerView({ auth }: Props) {
   const activeTargetCount = currentNightStep?.input_type === 'player_select' ? (currentNightStep.target_count ?? 1) : 0;
   const viewerGrimoire = state?.viewer_grimoire ?? null;
   const viewerDemonBluffs = state?.viewer_demon_bluffs ?? [];
+  const viewerEvilTeam = state?.viewer_evil_team ?? [];
 
   const selectablePlayers = state?.players.filter((player) => {
     if (currentNightStep?.allow_self === false && player.discord_user_id === state?.viewer?.discord_user_id) {
@@ -474,6 +481,21 @@ export default function PlayerView({ auth }: Props) {
           )}
         </div>
 
+        {viewerEvilTeam.length > 0 ? (
+          <div className="card stack bluff-card">
+            <h3>Evil Team</h3>
+            <p className="muted">With 8 or more players in the night, evil learns who else is on the evil team.</p>
+            <div className="role-reference-grid compact">
+              {viewerEvilTeam.map((player) => (
+                <article key={player.discord_user_id} className="role-reference-card compact">
+                  <strong>{player.display_name}</strong>
+                  <div className="muted">{player.team_role} · {player.seat_label}</div>
+                </article>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         {viewerDemonBluffs.length > 0 ? (
           <div className="card stack bluff-card">
             <h3>Demon Bluffs</h3>
@@ -579,6 +601,7 @@ export default function PlayerView({ auth }: Props) {
     </section>
   );
 }
+
 
 
 
