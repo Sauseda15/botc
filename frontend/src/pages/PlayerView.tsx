@@ -248,7 +248,10 @@ export default function PlayerView({ auth }: Props) {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ response: resolvedNightAction }),
+      body: JSON.stringify({
+        response: resolvedNightAction,
+        target_player_id: isPreview ? state?.viewer?.discord_user_id ?? null : null,
+      }),
     });
 
     if (response.ok) {
@@ -284,6 +287,7 @@ export default function PlayerView({ auth }: Props) {
   const isNight = state?.phase === 'night';
   const isViewerTurn = currentNightStep?.player_id === state?.viewer?.discord_user_id && currentNightStep?.audience === 'player';
   const canSubmitNightAction = !isPreview && ownPlayerId === state?.viewer?.discord_user_id && Boolean(isViewerTurn);
+  const canPreviewSubmit = isPreview && isStoryteller && Boolean(isViewerTurn);
   const currentTurnLabel = currentNightStep ? `${currentNightStep.player_name}'s` : 'the storyteller\'s';
   const needsPlayerSelect = currentNightStep?.input_type === 'player_select';
   const hasAllTargets = !needsPlayerSelect || selectedTargets.filter(Boolean).length === activeTargetCount;
@@ -340,7 +344,7 @@ export default function PlayerView({ auth }: Props) {
                 {needsPlayerSelect ? (
                   <div className="stack">
                     {Array.from({ length: activeTargetCount }, (_, index) => (
-                      <select key={index} value={selectedTargets[index] ?? ''} onChange={(event) => updateSelectedTarget(index, event.target.value)} disabled={!canSubmitNightAction}>
+                      <select key={index} value={selectedTargets[index] ?? ''} onChange={(event) => updateSelectedTarget(index, event.target.value)} disabled={!(canSubmitNightAction || canPreviewSubmit)}>
                         <option value="">Choose player {index + 1}</option>
                         {selectablePlayers.map((player) => (
                           <option key={`${index}-${player.discord_user_id}`} value={player.discord_user_id}>
@@ -351,12 +355,15 @@ export default function PlayerView({ auth }: Props) {
                     ))}
                   </div>
                 ) : (
-                  <textarea value={nightAction} onChange={(event) => setNightAction(event.target.value)} placeholder="Enter your night action or question" disabled={!canSubmitNightAction} />
+                  <textarea value={nightAction} onChange={(event) => setNightAction(event.target.value)} placeholder="Enter your night action or question" disabled={!(canSubmitNightAction || canPreviewSubmit)} />
                 )}
                 <div className="inline-form">
-                  <button className="primary" onClick={submitNightAction} disabled={!canSubmitNightAction || !hasAllTargets}>Submit Night Action</button>
+                  <button className="primary" onClick={submitNightAction} disabled={(!(canSubmitNightAction || canPreviewSubmit)) || !hasAllTargets}>
+                    {canPreviewSubmit ? 'Submit Test Night Action' : 'Submit Night Action'}
+                  </button>
                   <button className="secondary" onClick={() => load()}>Refresh</button>
                 </div>
+                {canPreviewSubmit ? <p className="muted">Storyteller preview can submit a test action for this player while you are debugging.</p> : null}
                 {currentNightStep?.status === 'awaiting_approval' ? <p className="muted">Your action is in. The storyteller is reviewing it before the night continues.</p> : null}
               </>
             ) : (
@@ -425,3 +432,7 @@ export default function PlayerView({ auth }: Props) {
     </section>
   );
 }
+
+
+
+

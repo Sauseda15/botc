@@ -59,6 +59,7 @@ class NightPromptRequest(BaseModel):
 
 class NightActionRequest(BaseModel):
     response: str
+    target_player_id: str | None = None
 
 
 class TestPlayersRequest(BaseModel):
@@ -190,10 +191,20 @@ async def cast_vote(payload: VoteRequest, session: WebSession = Depends(require_
 
 @router.post('/player/night-action')
 async def submit_night_action(payload: NightActionRequest, session: WebSession = Depends(require_session)):
-    if session.discord_user_id not in store.current_game().players:
-        raise HTTPException(status_code=403, detail='You are not seated in the current game.')
+    target_player_id = session.discord_user_id
+    if payload.target_player_id and payload.target_player_id != session.discord_user_id:
+        if not store.is_storyteller(session.discord_user_id):
+            raise HTTPException(status_code=403, detail='Only storytellers can submit a test action for another player.')
+        target_player_id = payload.target_player_id
+
+    if target_player_id not in store.current_game().players:
+        raise HTTPException(status_code=403, detail='That player is not seated in the current game.')
+
     try:
-        store.submit_night_action(session.discord_user_id, payload.response)
+        store.submit_night_action(target_player_id, payload.response)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return store.get_player_state(session.discord_user_id, viewer_id=session.discord_user_id)
+    return store.get_player_state(target_player_id, viewer_id=session.discord_user_id)
+
+
+
