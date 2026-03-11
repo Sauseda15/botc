@@ -177,6 +177,12 @@ h3 {
   gap: 12px;
 }
 
+.stack > .secondary {
+    justify-self: center;
+    width: auto;
+    padding: 8px 18px;
+}
+
 .inline-form {
   display: flex;
   flex-wrap: wrap;
