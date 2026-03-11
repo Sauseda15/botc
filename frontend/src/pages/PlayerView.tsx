@@ -386,9 +386,9 @@ export default function PlayerView({ auth }: Props) {
         <div className="card stack">
           <h2>Your Role Sheet</h2>
           <div className="role-heading large">
-            <RoleIcon iconUrl={viewerRole?.icon_url} name={state?.viewer?.role_name ?? 'Role'} />
+            <RoleIcon iconUrl={viewerRole?.icon_url} name={state?.viewer?.role_name ?? 'Role'} variant="player" />
             <div>
-              <p><strong>Role:</strong> {state?.viewer?.role_name ?? 'Hidden until storyteller assigns roles'} variant="player"</p>
+              <p><strong>Role:</strong> {state?.viewer?.role_name ?? 'Hidden until storyteller assigns roles'}</p>
               <p><strong>Alignment:</strong> {state?.viewer?.alignment ?? 'Unknown'}</p>
               <p><strong>Phase:</strong> {state?.phase ?? 'setup'}</p>
             </div>
