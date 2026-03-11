@@ -290,7 +290,9 @@ textarea {
 }
 
 .role-heading.large {
-    align-items: flex-start;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 12px;
 }
 
 .role-heading.large .role-icon,
@@ -303,7 +305,11 @@ textarea {
     width: 76px;
     height: 76px;
     object-fit: contain;
-}
+
+    /* Align icon with the Alignment row */
+    grid-row: 2;
+        
+ }
 
 .role-reference-card {
     padding: 14px;
