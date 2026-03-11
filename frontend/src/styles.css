@@ -214,6 +214,8 @@ select {
   padding-top: 8px;
   padding-bottom: 8px;
   min-height: 42px;
+  height: 42px;
+  line-height: 1.2;
 }
 
 textarea {
