@@ -82,6 +82,7 @@ type PlayerState = {
     reminders: string[];
     private_history: string[];
     night_action_prompt?: string | null;
+    storyteller_message?: string | null;
     night_action_response?: string | null;
     night_action_submitted_at?: string | null;
   };
@@ -288,7 +289,7 @@ export default function PlayerView({ auth }: Props) {
   const isViewerTurn = currentNightStep?.player_id === state?.viewer?.discord_user_id && currentNightStep?.audience === 'player';
   const canSubmitNightAction = !isPreview && ownPlayerId === state?.viewer?.discord_user_id && Boolean(isViewerTurn);
   const canPreviewSubmit = isPreview && isStoryteller && Boolean(isViewerTurn);
-  const currentTurnLabel = currentNightStep ? `${currentNightStep.player_name}'s` : 'the storyteller\'s';
+
   const needsPlayerSelect = currentNightStep?.input_type === 'player_select';
   const hasAllTargets = !needsPlayerSelect || selectedTargets.filter(Boolean).length === activeTargetCount;
 
@@ -331,16 +332,17 @@ export default function PlayerView({ auth }: Props) {
             </div>
           </div>
           {viewerRole?.description ? <p className="muted">{viewerRole.description}</p> : null}
-          {isPreview ? <p className="muted">Preview mode is read-only for the storyteller.</p> : null}
+          {isPreview ? <p className="muted">Preview mode lets the storyteller inspect this player view and test actions when it is this player's turn.</p> : null}
         </div>
 
         <div className="card stack">
           <h3>Night Actions</h3>
-          <p className="muted">Night actions now happen here in the player site instead of Discord.</p>
+          <p className="muted">Your active night prompt and any storyteller-delivered result will appear here.</p>
           {isNight ? (
             isViewerTurn ? (
               <>
                 <p><strong>Prompt:</strong> {state?.viewer?.night_action_prompt ?? currentNightStep?.player_prompt ?? 'Wait for the storyteller to assign your night instruction.'}</p>
+                {state?.viewer?.storyteller_message ? <p><strong>Storyteller Info:</strong> {state.viewer.storyteller_message}</p> : null}
                 {needsPlayerSelect ? (
                   <div className="stack">
                     {Array.from({ length: activeTargetCount }, (_, index) => (
@@ -368,8 +370,7 @@ export default function PlayerView({ auth }: Props) {
               </>
             ) : (
               <>
-                <p className="muted">It is currently {currentTurnLabel} step.</p>
-                {currentNightStep?.storyteller_prompt ? <p><strong>Storyteller is resolving:</strong> {currentNightStep.storyteller_prompt}</p> : null}
+                {state?.viewer?.storyteller_message ? <p><strong>Storyteller Info:</strong> {state.viewer.storyteller_message}</p> : <p className="muted">Another player's night step is currently being resolved.</p>}
                 <button className="secondary" onClick={() => load()}>Refresh</button>
               </>
             )
@@ -432,6 +433,7 @@ export default function PlayerView({ auth }: Props) {
     </section>
   );
 }
+
 
 
 

@@ -43,27 +43,27 @@ ALIGNMENT_BY_GROUP = {
 }
 
 NIGHT_ACTION_TEMPLATES = {
-    'Chef': {'order': 10, 'audience': 'storyteller', 'requires_response': False, 'requires_approval': False, 'storyteller_prompt': 'Tell the Chef how many adjacent evil pairs are in play.'},
-    'Librarian': {'order': 11, 'audience': 'storyteller', 'requires_response': False, 'requires_approval': False, 'storyteller_prompt': 'Give the Librarian their first-night Outsider information.'},
-    'Washerwoman': {'order': 12, 'audience': 'storyteller', 'requires_response': False, 'requires_approval': False, 'storyteller_prompt': 'Give the Washerwoman their first-night Townsfolk information.'},
-    'Investigator': {'order': 13, 'audience': 'storyteller', 'requires_response': False, 'requires_approval': False, 'storyteller_prompt': 'Give the Investigator their first-night Minion information.'},
-    'Empath': {'order': 20, 'audience': 'storyteller', 'requires_response': False, 'requires_approval': False, 'storyteller_prompt': 'Tell the Empath how many living neighbors are evil.'},
-    'Fortune Teller': {'order': 30, 'audience': 'player', 'requires_response': True, 'requires_approval': True, 'player_prompt': 'Choose 2 players to check tonight. Use names or seat numbers.', 'approval_prompt': 'Approve the Fortune Teller choice and return their yes/no information.'},
-    'Monk': {'order': 35, 'audience': 'player', 'requires_response': True, 'requires_approval': True, 'player_prompt': 'Choose 1 player to protect tonight.', 'approval_prompt': 'Approve the Monk protection target.'},
-    'Poisoner': {'order': 40, 'audience': 'player', 'requires_response': True, 'requires_approval': True, 'player_prompt': 'Choose 1 player to poison tonight.', 'approval_prompt': 'Approve the Poisoner target.'},
-    'Spy': {'order': 41, 'audience': 'storyteller', 'requires_response': False, 'requires_approval': False, 'storyteller_prompt': 'Show the Spy the grimoire or summarize the information you want them to have.'},
+    'Chef': {'first_night_order': 50, 'first_night_only': True, 'audience': 'storyteller', 'requires_response': False, 'requires_approval': False, 'storyteller_prompt': 'Tell the Chef how many adjacent evil pairs are in play.'},
+    'Librarian': {'first_night_order': 30, 'first_night_only': True, 'audience': 'storyteller', 'requires_response': False, 'requires_approval': False, 'storyteller_prompt': 'Give the Librarian their first-night Outsider information.'},
+    'Washerwoman': {'first_night_order': 20, 'first_night_only': True, 'audience': 'storyteller', 'requires_response': False, 'requires_approval': False, 'storyteller_prompt': 'Give the Washerwoman their first-night Townsfolk information.'},
+    'Investigator': {'first_night_order': 40, 'first_night_only': True, 'audience': 'storyteller', 'requires_response': False, 'requires_approval': False, 'storyteller_prompt': 'Give the Investigator their first-night Minion information.'},
+    'Empath': {'first_night_order': 60, 'other_night_order': 60, 'audience': 'storyteller', 'requires_response': False, 'requires_approval': False, 'storyteller_prompt': 'Tell the Empath how many living neighbors are evil.'},
+    'Fortune Teller': {'first_night_order': 70, 'other_night_order': 70, 'audience': 'player', 'requires_response': True, 'requires_approval': True, 'player_prompt': 'Choose 2 players to check tonight. Use names or seat numbers.', 'approval_prompt': 'Approve the Fortune Teller choice and return their yes/no information.'},
+    'Monk': {'other_night_order': 20, 'other_night_only': True, 'audience': 'player', 'requires_response': True, 'requires_approval': True, 'player_prompt': 'Choose 1 player to protect tonight.', 'approval_prompt': 'Approve the Monk protection target.'},
+    'Poisoner': {'first_night_order': 10, 'other_night_order': 10, 'audience': 'player', 'requires_response': True, 'requires_approval': True, 'player_prompt': 'Choose 1 player to poison tonight.', 'approval_prompt': 'Approve the Poisoner target.'},
+    'Spy': {'first_night_order': 15, 'other_night_order': 15, 'audience': 'storyteller', 'requires_response': False, 'requires_approval': False, 'storyteller_prompt': 'Show the Spy the grimoire or summarize the information you want them to have.'},
     'Scarlet Woman': {'order': 42, 'audience': 'passive', 'requires_response': False, 'requires_approval': False, 'storyteller_prompt': 'Scarlet Woman is passive tonight unless the Demon dies.'},
     'Baron': {'order': 43, 'audience': 'passive', 'requires_response': False, 'requires_approval': False, 'storyteller_prompt': 'Baron is passive tonight.'},
-    'Imp': {'order': 50, 'audience': 'player', 'requires_response': True, 'requires_approval': True, 'player_prompt': 'Choose 1 player to kill tonight.', 'approval_prompt': 'Approve the Demon kill and record any storyteller outcome adjustments.'},
-    'Ravenkeeper': {'order': 55, 'audience': 'storyteller', 'requires_response': False, 'requires_approval': False, 'storyteller_prompt': 'If the Ravenkeeper died tonight, wake them and give their learn-a-role information.'},
-    'Undertaker': {'order': 56, 'audience': 'storyteller', 'requires_response': False, 'requires_approval': False, 'storyteller_prompt': 'If someone was executed today, tell the Undertaker their character.'},
+    'Imp': {'other_night_order': 30, 'other_night_only': True, 'audience': 'player', 'requires_response': True, 'requires_approval': True, 'player_prompt': 'Choose 1 player to kill tonight.', 'approval_prompt': 'Approve the Demon kill and record any storyteller outcome adjustments.'},
+    'Ravenkeeper': {'other_night_order': 80, 'other_night_only': True, 'audience': 'storyteller', 'requires_response': False, 'requires_approval': False, 'storyteller_prompt': 'If the Ravenkeeper died tonight, wake them and give their learn-a-role information.'},
+    'Undertaker': {'other_night_order': 90, 'other_night_only': True, 'audience': 'storyteller', 'requires_response': False, 'requires_approval': False, 'storyteller_prompt': 'If someone was executed today, tell the Undertaker their character.'},
     'Slayer': {'order': 90, 'audience': 'passive', 'requires_response': False, 'requires_approval': False, 'storyteller_prompt': 'Slayer has no night action.'},
     'Soldier': {'order': 91, 'audience': 'passive', 'requires_response': False, 'requires_approval': False, 'storyteller_prompt': 'Soldier has no night action.'},
     'Mayor': {'order': 92, 'audience': 'passive', 'requires_response': False, 'requires_approval': False, 'storyteller_prompt': 'Mayor has no night action.'},
     'Virgin': {'order': 93, 'audience': 'passive', 'requires_response': False, 'requires_approval': False, 'storyteller_prompt': 'Virgin has no night action.'},
     'Saint': {'order': 94, 'audience': 'passive', 'requires_response': False, 'requires_approval': False, 'storyteller_prompt': 'Saint has no night action.'},
     'Recluse': {'order': 95, 'audience': 'passive', 'requires_response': False, 'requires_approval': False, 'storyteller_prompt': 'Recluse has no night action.'},
-    'Butler': {'order': 96, 'audience': 'player', 'requires_response': True, 'requires_approval': True, 'player_prompt': 'Choose the player you must follow for voting tomorrow.', 'approval_prompt': 'Approve the Butler choice.'},
+    'Butler': {'first_night_order': 75, 'first_night_only': True, 'audience': 'player', 'requires_response': True, 'requires_approval': True, 'player_prompt': 'Choose the player you must follow for voting tomorrow.', 'approval_prompt': 'Approve the Butler choice.'},
     'Drunk': {'order': 97, 'audience': 'passive', 'requires_response': False, 'requires_approval': False, 'storyteller_prompt': 'Drunk thinks they are another character; resolve accordingly.'},
 
     'Clockmaker': {'order': 10, 'audience': 'storyteller', 'requires_response': False, 'requires_approval': False, 'storyteller_prompt': 'Give the Clockmaker their first-night distance information.'},
@@ -179,7 +179,7 @@ def build_role_entry(name: str, group: str, descriptions: dict[str, str], icons:
     }
 
 
-def get_role_night_template(role_name: str | None) -> dict[str, object]:
+def get_role_night_template(role_name: str | None, night_number: int = 1) -> dict[str, object]:
     if not role_name:
         return {
             'order': 999,
@@ -201,6 +201,15 @@ def get_role_night_template(role_name: str | None) -> dict[str, object]:
             },
         )
     )
+
+    first_night_only = bool(template.pop('first_night_only', False))
+    other_night_only = bool(template.pop('other_night_only', False))
+    if night_number <= 1:
+        template['order'] = int(template.pop('first_night_order', template.get('other_night_order', template.get('order', 999))))
+        template['appears_tonight'] = not other_night_only
+    else:
+        template['order'] = int(template.pop('other_night_order', template.get('first_night_order', template.get('order', 999))))
+        template['appears_tonight'] = not first_night_only
 
     selection_config = PLAYER_SELECTION_COUNTS.get(role_name)
     if selection_config:
@@ -291,5 +300,6 @@ def build_night_prompt(script_id: str, role_name: str | None, alignment: str | N
             action_note,
         ]
     )
+
 
 

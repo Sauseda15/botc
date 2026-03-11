@@ -75,6 +75,7 @@ class GamePlayer:
     reminders: list[str] = field(default_factory=list)
     private_history: list[str] = field(default_factory=list)
     night_action_prompt: str | None = None
+    storyteller_message: str | None = None
     night_action_response: str | None = None
     night_action_submitted_at: datetime | None = None
 
@@ -123,6 +124,7 @@ class GameRecord:
     current_nomination: Nomination | None = None
     log_entries: list[str] = field(default_factory=list)
     night_feed: list[str] = field(default_factory=list)
+    night_count: int = 0
     night_steps: list[NightStep] = field(default_factory=list)
     active_night_step_id: str | None = None
 
@@ -193,6 +195,7 @@ class GameStore:
             'reminders': player.reminders,
             'private_history': player.private_history,
             'night_action_prompt': player.night_action_prompt,
+            'storyteller_message': player.storyteller_message,
             'night_action_response': player.night_action_response,
             'night_action_submitted_at': player.night_action_submitted_at.isoformat() if player.night_action_submitted_at else None,
         }
@@ -244,6 +247,7 @@ class GameStore:
                 'current_nomination': self._serialize_nomination_snapshot(self._game.current_nomination),
                 'log_entries': self._game.log_entries,
                 'night_feed': self._game.night_feed,
+                'night_count': self._game.night_count,
                 'night_steps': [self._serialize_night_step_snapshot(step) for step in self._game.night_steps],
                 'active_night_step_id': self._game.active_night_step_id,
             },
@@ -293,6 +297,7 @@ class GameStore:
                     reminders=list(player_snapshot.get('reminders', [])),
                     private_history=list(player_snapshot.get('private_history', [])),
                     night_action_prompt=player_snapshot.get('night_action_prompt'),
+                    storyteller_message=player_snapshot.get('storyteller_message'),
                     night_action_response=player_snapshot.get('night_action_response'),
                     night_action_submitted_at=parse_dt(player_snapshot.get('night_action_submitted_at')),
                 )
@@ -301,6 +306,7 @@ class GameStore:
             current_nomination=current_nomination,
             log_entries=list(game_payload.get('log_entries', [])),
             night_feed=list(game_payload.get('night_feed', [])),
+            night_count=int(game_payload.get('night_count', 0)),
             night_steps=[
                 NightStep(
                     step_id=step_snapshot['step_id'],
@@ -375,6 +381,7 @@ class GameStore:
         self._game.active_night_step_id = None
         for player in self._game.players.values():
             player.night_action_prompt = None
+            player.storyteller_message = None
             player.night_action_response = None
             player.night_action_submitted_at = None
 
@@ -402,14 +409,16 @@ class GameStore:
 
     def _build_night_steps_locked(self) -> list[NightStep]:
         steps: list[NightStep] = []
+        night_number = max(self._game.night_count, 1)
+        active_players = [player for player in self._game.players.values() if player.is_alive and player.role_name]
         ordered_players = sorted(
-            self._game.players.values(),
-            key=lambda player: (int(get_role_night_template(player.role_name).get('order', 999)), player.seat),
+            active_players,
+            key=lambda player: (int(get_role_night_template(player.role_name, night_number).get('order', 999)), player.seat),
         )
         for player in ordered_players:
-            if not player.is_alive or not player.role_name:
+            template = get_role_night_template(player.role_name, night_number)
+            if not bool(template.get('appears_tonight', True)):
                 continue
-            template = get_role_night_template(player.role_name)
             steps.append(
                 NightStep(
                     step_id=str(uuid.uuid4()),
@@ -459,6 +468,10 @@ class GameStore:
         step.completed_at = utcnow()
         if resolution_note:
             step.resolution_note = resolution_note
+        player = self._game.players.get(step.player_id)
+        if resolution_note and player:
+            player.storyteller_message = resolution_note
+            player.private_history.append(f'Storyteller: {resolution_note}')
         self._game.night_feed.append(
             f'{actor_id} {"approved" if approved else "completed"} {step.player_name} ({step.role_name}) and advanced the night.'
         )
@@ -670,6 +683,7 @@ class GameStore:
         with self._lock:
             self._game.phase = phase
             if phase == GamePhase.NIGHT:
+                self._game.night_count += 1
                 self._clear_night_state_locked()
                 self._game.night_steps = self._build_night_steps_locked()
                 self._activate_next_night_step_locked()
@@ -818,6 +832,7 @@ class GameStore:
                 'reminders': player.reminders,
                 'private_history': player.private_history,
                 'night_action_prompt': player.night_action_prompt,
+                'storyteller_message': player.storyteller_message,
                 'night_action_response': player.night_action_response,
                 'night_action_submitted_at': player.night_action_submitted_at.isoformat() if player.night_action_submitted_at else None,
             }
@@ -913,6 +928,7 @@ class GameStore:
 
 
 store = GameStore()
+
 
 
 
