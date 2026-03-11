@@ -13,7 +13,7 @@ from psycopg import connect
 from psycopg.rows import dict_row
 
 from config import settings
-from content import build_night_prompt, get_script_reference, infer_alignment
+from content import build_night_prompt, get_role_night_template, get_script_reference, infer_alignment
 
 
 UTC = timezone.utc
@@ -36,6 +36,15 @@ class GamePhase(str, Enum):
     NIGHT = 'night'
     DAY = 'day'
     FINISHED = 'finished'
+
+
+class NightStepStatus(str, Enum):
+    PENDING = 'pending'
+    ACTIVE = 'active'
+    AWAITING_RESPONSE = 'awaiting_response'
+    AWAITING_APPROVAL = 'awaiting_approval'
+    COMPLETE = 'complete'
+    SKIPPED = 'skipped'
 
 
 @dataclass
@@ -71,6 +80,26 @@ class GamePlayer:
 
 
 @dataclass
+class NightStep:
+    step_id: str
+    order: int
+    role_name: str
+    player_id: str
+    player_name: str
+    audience: str
+    requires_response: bool = False
+    requires_approval: bool = False
+    player_prompt: str | None = None
+    storyteller_prompt: str | None = None
+    approval_prompt: str | None = None
+    status: NightStepStatus = NightStepStatus.PENDING
+    response_text: str | None = None
+    resolution_note: str | None = None
+    activated_at: datetime | None = None
+    completed_at: datetime | None = None
+
+
+@dataclass
 class Nomination:
     nominator_id: str
     nominee_id: str
@@ -91,6 +120,8 @@ class GameRecord:
     current_nomination: Nomination | None = None
     log_entries: list[str] = field(default_factory=list)
     night_feed: list[str] = field(default_factory=list)
+    night_steps: list[NightStep] = field(default_factory=list)
+    active_night_step_id: str | None = None
 
 
 class GameStore:
@@ -163,6 +194,26 @@ class GameStore:
             'night_action_submitted_at': player.night_action_submitted_at.isoformat() if player.night_action_submitted_at else None,
         }
 
+    def _serialize_night_step_snapshot(self, step: NightStep) -> dict[str, Any]:
+        return {
+            'step_id': step.step_id,
+            'order': step.order,
+            'role_name': step.role_name,
+            'player_id': step.player_id,
+            'player_name': step.player_name,
+            'audience': step.audience,
+            'requires_response': step.requires_response,
+            'requires_approval': step.requires_approval,
+            'player_prompt': step.player_prompt,
+            'storyteller_prompt': step.storyteller_prompt,
+            'approval_prompt': step.approval_prompt,
+            'status': step.status.value,
+            'response_text': step.response_text,
+            'resolution_note': step.resolution_note,
+            'activated_at': step.activated_at.isoformat() if step.activated_at else None,
+            'completed_at': step.completed_at.isoformat() if step.completed_at else None,
+        }
+
     def _serialize_nomination_snapshot(self, nomination: Nomination | None) -> dict[str, Any] | None:
         if not nomination:
             return None
@@ -187,6 +238,8 @@ class GameStore:
                 'current_nomination': self._serialize_nomination_snapshot(self._game.current_nomination),
                 'log_entries': self._game.log_entries,
                 'night_feed': self._game.night_feed,
+                'night_steps': [self._serialize_night_step_snapshot(step) for step in self._game.night_steps],
+                'active_night_step_id': self._game.active_night_step_id,
             },
             'sessions': {session_id: self._serialize_session(session) for session_id, session in self._sessions.items()},
             'oauth_states': self._oauth_states,
@@ -204,6 +257,7 @@ class GameStore:
         payload = row['payload']
         game_payload = payload.get('game', {})
         players_payload = game_payload.get('players', {})
+        night_steps_payload = game_payload.get('night_steps', [])
         nomination_payload = game_payload.get('current_nomination')
         current_nomination = None
         if nomination_payload:
@@ -241,6 +295,28 @@ class GameStore:
             current_nomination=current_nomination,
             log_entries=list(game_payload.get('log_entries', [])),
             night_feed=list(game_payload.get('night_feed', [])),
+            night_steps=[
+                NightStep(
+                    step_id=step_snapshot['step_id'],
+                    order=int(step_snapshot.get('order', 999)),
+                    role_name=step_snapshot.get('role_name', 'Unknown'),
+                    player_id=step_snapshot.get('player_id', ''),
+                    player_name=step_snapshot.get('player_name', 'Unknown'),
+                    audience=step_snapshot.get('audience', 'storyteller'),
+                    requires_response=bool(step_snapshot.get('requires_response', False)),
+                    requires_approval=bool(step_snapshot.get('requires_approval', False)),
+                    player_prompt=step_snapshot.get('player_prompt'),
+                    storyteller_prompt=step_snapshot.get('storyteller_prompt'),
+                    approval_prompt=step_snapshot.get('approval_prompt'),
+                    status=NightStepStatus(step_snapshot.get('status', NightStepStatus.PENDING.value)),
+                    response_text=step_snapshot.get('response_text'),
+                    resolution_note=step_snapshot.get('resolution_note'),
+                    activated_at=parse_dt(step_snapshot.get('activated_at')),
+                    completed_at=parse_dt(step_snapshot.get('completed_at')),
+                )
+                for step_snapshot in night_steps_payload
+            ],
+            active_night_step_id=game_payload.get('active_night_step_id'),
         )
 
         self._sessions = {
@@ -284,6 +360,98 @@ class GameStore:
     def _touch(self) -> None:
         self._game.updated_at = utcnow()
         self._persist_locked()
+
+    def _clear_night_state_locked(self) -> None:
+        self._game.night_steps = []
+        self._game.active_night_step_id = None
+        for player in self._game.players.values():
+            player.night_action_prompt = None
+            player.night_action_response = None
+            player.night_action_submitted_at = None
+
+    def _get_night_step_locked(self, step_id: str | None) -> NightStep | None:
+        if not step_id:
+            return None
+        for step in self._game.night_steps:
+            if step.step_id == step_id:
+                return step
+        return None
+
+    def _set_player_prompt_for_active_step_locked(self, step: NightStep | None) -> None:
+        for player in self._game.players.values():
+            player.night_action_prompt = None
+        if not step or step.audience != 'player':
+            return
+        player = self._game.players.get(step.player_id)
+        if player:
+            player.night_action_prompt = step.player_prompt or build_night_prompt(
+                self._game.script,
+                player.role_name,
+                player.alignment,
+                player.reminders,
+            )
+
+    def _build_night_steps_locked(self) -> list[NightStep]:
+        steps: list[NightStep] = []
+        ordered_players = sorted(
+            self._game.players.values(),
+            key=lambda player: (int(get_role_night_template(player.role_name).get('order', 999)), player.seat),
+        )
+        for player in ordered_players:
+            if not player.is_alive or not player.role_name:
+                continue
+            template = get_role_night_template(player.role_name)
+            steps.append(
+                NightStep(
+                    step_id=str(uuid.uuid4()),
+                    order=int(template.get('order', 999)),
+                    role_name=player.role_name,
+                    player_id=player.discord_user_id,
+                    player_name=player.display_name,
+                    audience=str(template.get('audience', 'storyteller')),
+                    requires_response=bool(template.get('requires_response', False)),
+                    requires_approval=bool(template.get('requires_approval', False)),
+                    player_prompt=build_night_prompt(self._game.script, player.role_name, player.alignment, player.reminders),
+                    storyteller_prompt=str(template.get('storyteller_prompt') or ''),
+                    approval_prompt=str(template.get('approval_prompt') or ''),
+                    status=NightStepStatus.PENDING,
+                )
+            )
+        return steps
+
+    def _activate_next_night_step_locked(self) -> NightStep | None:
+        next_step = next((step for step in self._game.night_steps if step.status == NightStepStatus.PENDING), None)
+        if not next_step:
+            self._game.active_night_step_id = None
+            self._set_player_prompt_for_active_step_locked(None)
+            self._game.night_feed.append('Night order complete.')
+            return None
+
+        next_step.status = NightStepStatus.ACTIVE
+        next_step.activated_at = utcnow()
+        self._game.active_night_step_id = next_step.step_id
+        self._set_player_prompt_for_active_step_locked(next_step)
+        self._game.night_feed.append(f'Night order: {next_step.player_name} ({next_step.role_name}) is now active.')
+        return next_step
+
+    def _complete_current_night_step_locked(self, actor_id: str, resolution_note: str | None = None, approved: bool = False) -> NightStep | None:
+        step = self._get_night_step_locked(self._game.active_night_step_id)
+        if not step:
+            return None
+        if step.audience == 'player' and step.requires_response and step.status == NightStepStatus.ACTIVE:
+            raise ValueError('The active player must submit a night action before you can advance.')
+        if step.status == NightStepStatus.AWAITING_APPROVAL and not approved:
+            raise ValueError('This night action is waiting for storyteller approval.')
+
+        step.status = NightStepStatus.COMPLETE
+        step.completed_at = utcnow()
+        if resolution_note:
+            step.resolution_note = resolution_note
+        self._game.night_feed.append(
+            f'{actor_id} {"approved" if approved else "completed"} {step.player_name} ({step.role_name}) and advanced the night.'
+        )
+        self._activate_next_night_step_locked()
+        return step
 
     def reset_game(self) -> None:
         with self._lock:
@@ -482,6 +650,7 @@ class GameStore:
                 players=player_map,
                 log_entries=[f'Game created by storyteller {storyteller_id}.'],
             )
+            self._clear_night_state_locked()
             self._persist_locked()
             return self._game
 
@@ -489,10 +658,11 @@ class GameStore:
         with self._lock:
             self._game.phase = phase
             if phase == GamePhase.NIGHT:
-                for player in self._game.players.values():
-                    player.night_action_response = None
-                    player.night_action_submitted_at = None
-                    player.night_action_prompt = build_night_prompt(self._game.script, player.role_name, player.alignment, player.reminders)
+                self._clear_night_state_locked()
+                self._game.night_steps = self._build_night_steps_locked()
+                self._activate_next_night_step_locked()
+            else:
+                self._clear_night_state_locked()
             self._game.log_entries.append(f'{actor_id} moved the game to {phase.value}.')
             self._touch()
             return self._game
@@ -556,6 +726,9 @@ class GameStore:
         with self._lock:
             player = self._game.players[discord_user_id]
             player.night_action_prompt = prompt
+            active_step = self._get_night_step_locked(self._game.active_night_step_id)
+            if active_step and active_step.player_id == discord_user_id:
+                active_step.player_prompt = prompt
             player.night_action_response = None
             player.night_action_submitted_at = None
             self._game.night_feed.append(f'{actor_id} set a night prompt for {player.display_name}.')
@@ -566,13 +739,48 @@ class GameStore:
         with self._lock:
             if self._game.phase != GamePhase.NIGHT:
                 raise ValueError('Night actions can only be submitted during the night phase.')
+            active_step = self._get_night_step_locked(self._game.active_night_step_id)
+            if not active_step:
+                raise ValueError('There is no active night step right now.')
+            if active_step.player_id != discord_user_id or active_step.audience != 'player':
+                raise ValueError('It is not your turn in the night order.')
+
             player = self._game.players[discord_user_id]
             player.night_action_response = response_text
             player.night_action_submitted_at = utcnow()
             player.private_history.append(f'Night action submitted: {response_text}')
-            self._game.night_feed.append(f'{player.display_name} submitted a night action.')
+            active_step.response_text = response_text
+            if active_step.requires_approval:
+                active_step.status = NightStepStatus.AWAITING_APPROVAL
+                self._game.night_feed.append(f'{player.display_name} submitted a night action and is awaiting storyteller approval.')
+            else:
+                active_step.status = NightStepStatus.COMPLETE
+                active_step.completed_at = utcnow()
+                self._game.night_feed.append(f'{player.display_name} submitted a night action.')
+                self._activate_next_night_step_locked()
             self._touch()
             return player
+
+    def advance_night_step(self, actor_id: str, resolution_note: str | None = None) -> dict[str, Any]:
+        with self._lock:
+            if self._game.phase != GamePhase.NIGHT:
+                raise ValueError('You can only advance the night during the night phase.')
+            self._complete_current_night_step_locked(actor_id, resolution_note=resolution_note)
+            self._touch()
+            return self.get_storyteller_state()
+
+    def approve_night_step(self, actor_id: str, resolution_note: str | None = None) -> dict[str, Any]:
+        with self._lock:
+            if self._game.phase != GamePhase.NIGHT:
+                raise ValueError('You can only approve night actions during the night phase.')
+            step = self._get_night_step_locked(self._game.active_night_step_id)
+            if not step:
+                raise ValueError('There is no active night step right now.')
+            if step.status not in {NightStepStatus.AWAITING_APPROVAL, NightStepStatus.ACTIVE}:
+                raise ValueError('This night step does not need storyteller approval.')
+            self._complete_current_night_step_locked(actor_id, resolution_note=resolution_note, approved=True)
+            self._touch()
+            return self.get_storyteller_state()
 
     def _serialize_lobby_player(self, player: LobbyPlayer) -> dict[str, Any]:
         return {
@@ -603,6 +811,28 @@ class GameStore:
             }
         )
         return payload
+
+    def _serialize_night_step(self, step: NightStep | None) -> dict[str, Any] | None:
+        if not step:
+            return None
+        return {
+            'step_id': step.step_id,
+            'order': step.order,
+            'role_name': step.role_name,
+            'player_id': step.player_id,
+            'player_name': step.player_name,
+            'audience': step.audience,
+            'requires_response': step.requires_response,
+            'requires_approval': step.requires_approval,
+            'player_prompt': step.player_prompt,
+            'storyteller_prompt': step.storyteller_prompt,
+            'approval_prompt': step.approval_prompt,
+            'status': step.status.value,
+            'response_text': step.response_text,
+            'resolution_note': step.resolution_note,
+            'activated_at': step.activated_at.isoformat() if step.activated_at else None,
+            'completed_at': step.completed_at.isoformat() if step.completed_at else None,
+        }
 
     def serialize_nomination(self) -> dict[str, Any] | None:
         nomination = self._game.current_nomination
@@ -639,6 +869,9 @@ class GameStore:
                 'viewer_id': viewer_id or discord_user_id,
                 'is_preview': bool(viewer_id and viewer_id != discord_user_id),
             }
+            public_state['current_night_step'] = self._serialize_night_step(
+                self._get_night_step_locked(self._game.active_night_step_id)
+            )
             return public_state
 
     def get_storyteller_state(self) -> dict[str, Any]:
@@ -657,7 +890,29 @@ class GameStore:
                 'current_nomination': self.serialize_nomination(),
                 'log_entries': self._game.log_entries[-50:],
                 'night_feed': self._game.night_feed[-50:],
+                'night_steps': [self._serialize_night_step(step) for step in self._game.night_steps],
+                'current_night_step': self._serialize_night_step(
+                    self._get_night_step_locked(self._game.active_night_step_id)
+                ),
             }
 
 
 store = GameStore()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

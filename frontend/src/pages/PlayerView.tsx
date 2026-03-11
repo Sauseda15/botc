@@ -26,6 +26,22 @@ type ScriptReference = {
   roles: RoleReference[];
 };
 
+type NightStep = {
+  step_id: string;
+  order: number;
+  role_name: string;
+  player_id: string;
+  player_name: string;
+  audience: string;
+  requires_response: boolean;
+  requires_approval: boolean;
+  player_prompt?: string | null;
+  storyteller_prompt?: string | null;
+  approval_prompt?: string | null;
+  status: string;
+  response_text?: string | null;
+};
+
 type PlayerRecord = {
   discord_user_id: string;
   display_name: string;
@@ -76,6 +92,7 @@ type PlayerState = {
     viewer_id: string;
     is_preview: boolean;
   };
+  current_night_step?: NightStep | null;
 };
 
 type StorytellerState = {
@@ -225,31 +242,6 @@ export default function PlayerView({ auth }: Props) {
             <p><strong>{auth.user?.username}</strong>, you are checked in and visible to the storyteller.</p>
             <p className="muted">You will unlock your player sheet automatically once the storyteller seats you in the current game.</p>
           </div>
-
-          <div className="card">
-            <h3>Current Table Status</h3>
-            <p><strong>Game:</strong> {publicState?.name ?? 'Blood on the Clocktower'}</p>
-            <p><strong>Script:</strong> {publicState?.script_reference?.label ?? publicState?.script ?? 'Unassigned'}</p>
-            <p><strong>Phase:</strong> {publicState?.phase ?? 'setup'}</p>
-            <p><strong>Seated Players:</strong> {publicState?.players?.length ?? 0}</p>
-          </div>
-        </div>
-
-        <div className="card stack">
-          <h3>Script Reference</h3>
-          <div className="role-reference-grid compact">
-            {(publicState?.script_reference?.roles ?? []).map((role) => (
-              <article key={role.name} className="role-reference-card">
-                <div className="role-heading">
-                  <RoleIcon iconUrl={role.icon_url} name={role.name} />
-                  <div>
-                    <strong>{role.name}</strong>
-                    <div className="muted">{role.group} · {role.alignment}</div>
-                  </div>
-                </div>
-              </article>
-            ))}
-          </div>
         </div>
       </section>
     );
@@ -257,7 +249,10 @@ export default function PlayerView({ auth }: Props) {
 
   const isPreview = Boolean(state?.viewer_context?.is_preview);
   const isNight = state?.phase === 'night';
-  const canSubmitNightAction = !isPreview && ownPlayerId === state?.viewer?.discord_user_id;
+  const currentNightStep = state?.current_night_step ?? null;
+  const isViewerTurn = currentNightStep?.player_id === state?.viewer?.discord_user_id && currentNightStep?.audience === 'player';
+  const canSubmitNightAction = !isPreview && ownPlayerId === state?.viewer?.discord_user_id && Boolean(isViewerTurn);
+  const currentTurnLabel = currentNightStep ? `${currentNightStep.player_name}'s` : 'the storyteller\'s';
 
   return (
     <section className="panel split">
@@ -305,23 +300,23 @@ export default function PlayerView({ auth }: Props) {
           <h3>Night Actions</h3>
           <p className="muted">Night actions now happen here in the player site instead of Discord.</p>
           {isNight ? (
-            <>
-              <p><strong>Prompt:</strong> {state?.viewer?.night_action_prompt ?? 'Wait for the storyteller to assign your night instruction.'}</p>
-              <textarea
-                value={nightAction}
-                onChange={(event) => setNightAction(event.target.value)}
-                placeholder="Enter your night action or question"
-                disabled={!canSubmitNightAction}
-              />
-              <div className="inline-form">
-                <button className="primary" onClick={submitNightAction} disabled={!canSubmitNightAction}>Submit Night Action</button>
+            isViewerTurn ? (
+              <>
+                <p><strong>Prompt:</strong> {state?.viewer?.night_action_prompt ?? currentNightStep?.player_prompt ?? 'Wait for the storyteller to assign your night instruction.'}</p>
+                <textarea value={nightAction} onChange={(event) => setNightAction(event.target.value)} placeholder="Enter your night action or question" disabled={!canSubmitNightAction} />
+                <div className="inline-form">
+                  <button className="primary" onClick={submitNightAction} disabled={!canSubmitNightAction}>Submit Night Action</button>
+                  <button className="secondary" onClick={() => load()}>Refresh</button>
+                </div>
+                {currentNightStep?.status === 'awaiting_approval' ? <p className="muted">Your action is in. The storyteller is reviewing it before the night continues.</p> : null}
+              </>
+            ) : (
+              <>
+                <p className="muted">It is currently {currentTurnLabel} step.</p>
+                {currentNightStep?.storyteller_prompt ? <p><strong>Storyteller is resolving:</strong> {currentNightStep.storyteller_prompt}</p> : null}
                 <button className="secondary" onClick={() => load()}>Refresh</button>
-              </div>
-              {!canSubmitNightAction ? <p className="muted">Preview mode can inspect prompts, but only the real player can submit the action.</p> : null}
-              {state?.viewer?.night_action_submitted_at ? (
-                <p className="muted">Last submitted at {new Date(state.viewer.night_action_submitted_at).toLocaleString()}.</p>
-              ) : null}
-            </>
+              </>
+            )
           ) : (
             <p className="muted">The night-action panel becomes active when the storyteller moves the game to the night phase.</p>
           )}
@@ -353,7 +348,6 @@ export default function PlayerView({ auth }: Props) {
 
         <div className="card stack">
           <h3>Script Sheet</h3>
-          <p className="muted">All roles for the current script, with icons and reminder text.</p>
           <div className="role-reference-grid">
             {(state?.script_reference?.roles ?? []).map((role) => (
               <article key={role.name} className="role-reference-card">
@@ -372,13 +366,11 @@ export default function PlayerView({ auth }: Props) {
 
         <div className="card stack">
           <h3>Voting</h3>
-          <p className="muted">Daytime votes still happen here on the website.</p>
           <div className="inline-form">
             <button className="primary" onClick={() => castVote(true)} disabled={isPreview}>Vote Yes</button>
             <button className="secondary" onClick={() => castVote(false)} disabled={isPreview}>Vote No</button>
             <button className="secondary" onClick={() => load()}>Refresh</button>
           </div>
-          {isPreview ? <p className="muted">Votes are disabled while the storyteller is previewing another player.</p> : null}
         </div>
       </div>
     </section>

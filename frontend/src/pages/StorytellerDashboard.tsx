@@ -62,6 +62,23 @@ type ScriptReference = {
   roles: RoleOption[];
 };
 
+type NightStep = {
+  step_id: string;
+  order: number;
+  role_name: string;
+  player_id: string;
+  player_name: string;
+  audience: string;
+  requires_response: boolean;
+  requires_approval: boolean;
+  player_prompt?: string | null;
+  storyteller_prompt?: string | null;
+  approval_prompt?: string | null;
+  status: string;
+  response_text?: string | null;
+  resolution_note?: string | null;
+};
+
 type StorytellerState = {
   game_id: string;
   name: string;
@@ -76,6 +93,8 @@ type StorytellerState = {
     nominee_id: string;
     votes: Record<string, boolean>;
   } | null;
+  current_night_step?: NightStep | null;
+  night_steps: NightStep[];
   log_entries: string[];
   night_feed: string[];
 };
@@ -143,6 +162,7 @@ export default function StorytellerDashboard({ auth }: Props) {
   const [selectedSeat, setSelectedSeat] = useState(0);
   const [nomination, setNomination] = useState({ nominator_id: '', nominee_id: '' });
   const [nightPrompt, setNightPrompt] = useState({ discord_user_id: '', prompt: '' });
+  const [resolutionNote, setResolutionNote] = useState('');
   const [error, setError] = useState('');
 
   const activeScript = useMemo(
@@ -157,6 +177,7 @@ export default function StorytellerDashboard({ auth }: Props) {
   const assignedSeats = setupSeats.filter((seat) => seat.role_name).length;
   const playersNeeded = Math.max(playerCount - filledSeats, 0);
   const canCreateGame = filledSeats === playerCount && assignedSeats === playerCount;
+  const currentNightStep = state?.current_night_step ?? null;
 
   const load = () => {
     fetch(apiUrl('/api/game/storyteller'), { credentials: 'include' })
@@ -235,7 +256,6 @@ export default function StorytellerDashboard({ auth }: Props) {
       setError('');
     }
   };
-
   const submitSetup = async () => {
     if (playersNeeded > 0) {
       setError(`You need ${playersNeeded} more logged-in player${playersNeeded === 1 ? '' : 's'} before starting this game.`);
@@ -332,6 +352,25 @@ export default function StorytellerDashboard({ auth }: Props) {
     }
   };
 
+  const updateNightStep = async (mode: 'advance' | 'approve') => {
+    const response = await fetch(apiUrl(`/api/game/storyteller/night/${mode}`), {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resolution_note: resolutionNote || null }),
+    });
+
+    if (response.ok) {
+      setState(await response.json());
+      setResolutionNote('');
+      setError('');
+      return;
+    }
+
+    const payload = await response.json().catch(() => ({}));
+    setError(payload.detail ?? 'Night step update failed.');
+  };
+
   if (!auth.user?.is_storyteller) {
     return <section className="panel"><p>Log in with a storyteller Discord account to use the dashboard.</p></section>;
   }
@@ -374,26 +413,11 @@ export default function StorytellerDashboard({ auth }: Props) {
             <button className="secondary" onClick={fillTestPlayers}>Fill With Test Players</button>
             <button className="secondary" onClick={clearTestPlayers}>Clear Test Players</button>
           </div>
-          <p className="muted">Test players are storyteller-only stand-ins so you can build and inspect a full table without enough live people online.</p>
-        </div>
-
-        <div className="card stack">
-          <h3>Logged-in Lobby</h3>
-          <p className="muted">Anyone who signs in with Discord and is not the storyteller shows up here automatically.</p>
-          <div className="seat-grid">
-            {lobbyPlayers.length > 0 ? lobbyPlayers.map((player) => (
-              <article key={player.discord_user_id} className="seat">
-                <strong>{player.display_name}</strong>
-                <div className="muted">{player.discord_user_id}</div>
-              </article>
-            )) : <p className="muted">No players have logged in yet.</p>}
-          </div>
         </div>
 
         <div className="setup-grid">
           <div className="stack">
             <h3>Auto-Seated Players</h3>
-            <p className="muted">Seats fill in login order. Click a seat, then click a token to assign that character.</p>
             <div className="seat-grid">
               {setupSeats.map((seat, index) => {
                 const seatRole = seat.role_name ? roleMap.get(seat.role_name) : undefined;
@@ -418,7 +442,6 @@ export default function StorytellerDashboard({ auth }: Props) {
                     ) : (
                       <div className="muted">Waiting for a player login</div>
                     )}
-                    <div className="muted">Alignment: {seat.alignment ?? 'Unassigned'}</div>
                   </article>
                 );
               })}
@@ -427,7 +450,6 @@ export default function StorytellerDashboard({ auth }: Props) {
 
           <div className="stack">
             <h3>Playable Tokens</h3>
-            <p className="muted">Select a seat, then click a token from the chosen script to assign it.</p>
             <div className="token-grid">
               {(activeScript?.roles ?? []).map((role) => (
                 <button key={role.name} className={`token-button ${setupSeats[selectedSeat]?.role_name === role.name ? 'active' : ''}`} onClick={() => assignRoleToSeat(role)}>
@@ -439,15 +461,6 @@ export default function StorytellerDashboard({ auth }: Props) {
                 </button>
               ))}
             </div>
-            {activeScript?.roles.find((role) => role.name === setupSeats[selectedSeat]?.role_name)?.description ? (
-              <div className="card">
-                <div className="role-heading">
-                  <RoleIcon iconUrl={activeScript?.roles.find((role) => role.name === setupSeats[selectedSeat]?.role_name)?.icon_url} name={setupSeats[selectedSeat]?.role_name ?? 'Role'} />
-                  <strong>{setupSeats[selectedSeat]?.role_name}</strong>
-                </div>
-                <p className="muted">{activeScript?.roles.find((role) => role.name === setupSeats[selectedSeat]?.role_name)?.description}</p>
-              </div>
-            ) : null}
           </div>
         </div>
 
@@ -469,6 +482,26 @@ export default function StorytellerDashboard({ auth }: Props) {
             </div>
           </div>
 
+          <div className="card stack">
+            <h3>Night Order</h3>
+            {currentNightStep ? (
+              <>
+                <p><strong>Current Step:</strong> {currentNightStep.player_name} ({currentNightStep.role_name})</p>
+                <p className="muted">Audience: {currentNightStep.audience} · Status: {currentNightStep.status}</p>
+                {currentNightStep.player_prompt ? <p><strong>Player Prompt:</strong> {currentNightStep.player_prompt}</p> : null}
+                {currentNightStep.storyteller_prompt ? <p><strong>Storyteller Prompt:</strong> {currentNightStep.storyteller_prompt}</p> : null}
+                {currentNightStep.approval_prompt ? <p><strong>Approval Prompt:</strong> {currentNightStep.approval_prompt}</p> : null}
+                {currentNightStep.response_text ? <p><strong>Player Response:</strong> {currentNightStep.response_text}</p> : null}
+                <textarea value={resolutionNote} onChange={(event) => setResolutionNote(event.target.value)} placeholder="Optional storyteller note or info to pass back before continuing" />
+                <div className="inline-form">
+                  <button className="primary" onClick={() => updateNightStep('advance')}>Advance</button>
+                  <button className="secondary" onClick={() => updateNightStep('approve')}>Approve And Continue</button>
+                </div>
+              </>
+            ) : (
+              <p className="muted">Move the game to night to generate the automatic night order.</p>
+            )}
+          </div>
           <div className="card stack">
             <h3>Night Prompt Override</h3>
             <select value={nightPrompt.discord_user_id} onChange={(event) => setNightPrompt({ ...nightPrompt, discord_user_id: event.target.value })}>
@@ -516,33 +549,13 @@ export default function StorytellerDashboard({ auth }: Props) {
                     </div>
                     <div>{player.role_name ?? 'Unassigned'}</div>
                     <div className="muted">{player.alignment ?? 'Alignment hidden'}</div>
-                    <div className="muted">Prompt ready: {player.night_action_prompt ? 'Yes' : 'No'}</div>
                     <div className="muted">Response: {player.night_action_response ?? 'Waiting'}</div>
-                    <div className="inline-form">
-                      <button className="secondary" onClick={() => setAlive(player.discord_user_id, !player.is_alive)}>
-                        Mark {player.is_alive ? 'Dead' : 'Alive'}
-                      </button>
-                    </div>
+                    <button className="secondary" onClick={() => setAlive(player.discord_user_id, !player.is_alive)}>
+                      Mark {player.is_alive ? 'Dead' : 'Alive'}
+                    </button>
                   </article>
                 );
               })}
-            </div>
-          </div>
-
-          <div className="card stack">
-            <h3>Storyteller Script View</h3>
-            <div className="role-reference-grid compact">
-              {(state?.script_reference?.roles ?? []).map((role) => (
-                <article key={role.name} className="role-reference-card compact">
-                  <div className="role-heading">
-                    <RoleIcon iconUrl={role.icon_url} name={role.name} />
-                    <div>
-                      <strong>{role.name}</strong>
-                      <div className="muted">{role.group} · {role.alignment}</div>
-                    </div>
-                  </div>
-                </article>
-              ))}
             </div>
           </div>
 

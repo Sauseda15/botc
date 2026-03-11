@@ -65,6 +65,10 @@ class TestPlayersRequest(BaseModel):
     target_count: int = Field(ge=0, le=20)
 
 
+class NightAdvanceRequest(BaseModel):
+    resolution_note: str | None = None
+
+
 @router.get('/setup-options')
 async def setup_options():
     return {'scripts': get_script_options()}
@@ -160,6 +164,22 @@ async def add_note(payload: StorytellerNoteRequest, session: WebSession = Depend
 async def set_night_prompt(payload: NightPromptRequest, session: WebSession = Depends(require_storyteller)):
     store.set_night_prompt(session.discord_user_id, payload.discord_user_id, payload.prompt)
     return store.get_storyteller_state()
+
+
+@router.post('/storyteller/night/advance')
+async def advance_night(payload: NightAdvanceRequest, session: WebSession = Depends(require_storyteller)):
+    try:
+        return store.advance_night_step(session.discord_user_id, payload.resolution_note)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post('/storyteller/night/approve')
+async def approve_night(payload: NightAdvanceRequest, session: WebSession = Depends(require_storyteller)):
+    try:
+        return store.approve_night_step(session.discord_user_id, payload.resolution_note)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post('/player/vote')
