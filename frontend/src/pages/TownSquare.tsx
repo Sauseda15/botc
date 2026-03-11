@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 type PublicPlayer = {
   discord_user_id: string;
   display_name: string;
-  seat: int;
+  seat: number;
   is_alive: boolean;
 };
 
