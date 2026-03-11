@@ -90,11 +90,17 @@ h3 {
 .tabs button,
 .primary,
 .secondary,
-.token-button,
 .seat-select {
   border: none;
   border-radius: 999px;
-  padding: 10px 16px;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+
+.token-button {
+  border: none;
+  border-radius: 16px;
+  padding: 10px 12px;
   cursor: pointer;
 }
 
@@ -294,3 +300,4 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
+

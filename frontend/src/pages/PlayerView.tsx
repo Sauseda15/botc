@@ -131,7 +131,7 @@ export default function PlayerView({ auth }: Props) {
   const [selectedPlayerId, setSelectedPlayerId] = useState('');
 
   const isStoryteller = Boolean(auth.user?.is_storyteller);
-  const ownPlayerId = auth.user?.is_player ? auth.user.discord_user_id : '';
+  const ownPlayerId = auth.user?.discord_user_id ?? '';
   const roleMap = new Map((state?.script_reference?.roles ?? publicState?.script_reference?.roles ?? []).map((role) => [role.name, role]));
   const viewerRole = state?.viewer?.role_name ? roleMap.get(state.viewer.role_name) : undefined;
   const currentNightStep = state?.current_night_step ?? null;
@@ -194,7 +194,6 @@ export default function PlayerView({ auth }: Props) {
       .then((payload: StorytellerState) => setStorytellerPlayers(payload.players ?? []))
       .catch(() => setStorytellerPlayers([]));
   }, [auth.authenticated, isStoryteller]);
-
   useEffect(() => {
     if (!auth.authenticated) {
       return;
@@ -223,6 +222,23 @@ export default function PlayerView({ auth }: Props) {
     setState(null);
     setError('');
   }, [auth.authenticated, ownPlayerId, isStoryteller, storytellerPlayers.length]);
+
+  useEffect(() => {
+    if (!auth.authenticated) {
+      return;
+    }
+
+    const pollTargetId = ownPlayerId || selectedPlayerId || (isStoryteller && storytellerPlayers.length > 0 ? storytellerPlayers[0].discord_user_id : '');
+    const refresh = () => {
+      loadPublicState();
+      if (pollTargetId) {
+        load(pollTargetId);
+      }
+    };
+
+    const timer = window.setInterval(refresh, 4000);
+    return () => window.clearInterval(timer);
+  }, [auth.authenticated, ownPlayerId, selectedPlayerId, isStoryteller, storytellerPlayers]);
 
   useEffect(() => {
     if (currentNightStep?.input_type !== 'player_select') {
@@ -304,7 +320,7 @@ export default function PlayerView({ auth }: Props) {
     return <section className="panel"><p>Log in with Discord to see your player view.</p></section>;
   }
 
-  if (!ownPlayerId && !isStoryteller) {
+  if (!auth.user?.discord_user_id && !isStoryteller) {
     return (
       <section className="panel split">
         <div className="stack">
@@ -501,6 +517,9 @@ export default function PlayerView({ auth }: Props) {
     </section>
   );
 }
+
+
+
 
 
 
