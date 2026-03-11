@@ -293,7 +293,7 @@ textarea {
     display: grid;
     grid-template-columns: auto 1fr;
     column-gap: 12px;
-    align-items: center;
+    align-items: start;
 }
 
 .role-heading.large .role-icon,
@@ -303,7 +303,7 @@ textarea {
 }
 
 .player-role-sheet {
-    align-items: stretch;
+    align-items: start;
 }
 
 .player-role-summary {
@@ -340,5 +340,6 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
+
 
 
