@@ -61,6 +61,10 @@ class NightActionRequest(BaseModel):
     response: str
 
 
+class TestPlayersRequest(BaseModel):
+    target_count: int = Field(ge=0, le=20)
+
+
 @router.get('/setup-options')
 async def setup_options():
     return {'scripts': get_script_options()}
@@ -114,6 +118,18 @@ async def create_game(payload: CreateGameRequest, session: WebSession = Depends(
         'public_state': store.get_public_state(),
         'storyteller_state': store.get_storyteller_state(),
     }
+
+
+@router.post('/storyteller/test-players')
+async def ensure_test_players(payload: TestPlayersRequest, session: WebSession = Depends(require_storyteller)):
+    store.ensure_test_players(payload.target_count)
+    return store.get_storyteller_state()
+
+
+@router.post('/storyteller/test-players/clear')
+async def clear_test_players(session: WebSession = Depends(require_storyteller)):
+    store.clear_test_players()
+    return store.get_storyteller_state()
 
 
 @router.post('/storyteller/phase')

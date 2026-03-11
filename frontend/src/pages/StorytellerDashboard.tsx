@@ -210,6 +210,32 @@ export default function StorytellerDashboard({ auth }: Props) {
     setError('');
   };
 
+  const fillTestPlayers = async () => {
+    const response = await fetch(apiUrl('/api/game/storyteller/test-players'), {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_count: playerCount }),
+    });
+
+    if (response.ok) {
+      setState(await response.json());
+      setError('');
+    }
+  };
+
+  const clearTestPlayers = async () => {
+    const response = await fetch(apiUrl('/api/game/storyteller/test-players/clear'), {
+      method: 'POST',
+      credentials: 'include',
+    });
+
+    if (response.ok) {
+      setState(await response.json());
+      setError('');
+    }
+  };
+
   const submitSetup = async () => {
     if (playersNeeded > 0) {
       setError(`You need ${playersNeeded} more logged-in player${playersNeeded === 1 ? '' : 's'} before starting this game.`);
@@ -344,6 +370,11 @@ export default function StorytellerDashboard({ auth }: Props) {
                 ? `Everyone is here. Assign ${playerCount - assignedSeats} more token${playerCount - assignedSeats === 1 ? '' : 's'} to start.`
                 : 'Lobby is ready. You can create the game now.'}
           </p>
+          <div className="inline-form">
+            <button className="secondary" onClick={fillTestPlayers}>Fill With Test Players</button>
+            <button className="secondary" onClick={clearTestPlayers}>Clear Test Players</button>
+          </div>
+          <p className="muted">Test players are storyteller-only stand-ins so you can build and inspect a full table without enough live people online.</p>
         </div>
 
         <div className="card stack">

@@ -18,6 +18,7 @@ from content import build_night_prompt, get_script_reference, infer_alignment
 
 UTC = timezone.utc
 SNAPSHOT_KEY = 'botc_snapshot'
+TEST_PLAYER_PREFIX = 'test-player-'
 
 
 def utcnow() -> datetime:
@@ -326,6 +327,46 @@ class GameStore:
                 display_name=display_name,
             )
             self._persist_locked()
+
+    def ensure_test_players(self, target_count: int) -> list[LobbyPlayer]:
+        with self._lock:
+            non_test_players = [
+                player for player in self.list_lobby_players()
+                if not player.discord_user_id.startswith(TEST_PLAYER_PREFIX)
+            ]
+            existing_test_players = [
+                player for player in self.list_lobby_players()
+                if player.discord_user_id.startswith(TEST_PLAYER_PREFIX)
+            ]
+            total_needed = max(target_count - len(non_test_players), 0)
+
+            if len(existing_test_players) > total_needed:
+                keep_ids = {player.discord_user_id for player in existing_test_players[:total_needed]}
+                for player_id in list(self._lobby_players.keys()):
+                    if player_id.startswith(TEST_PLAYER_PREFIX) and player_id not in keep_ids:
+                        self._lobby_players.pop(player_id, None)
+            elif len(existing_test_players) < total_needed:
+                start_index = len(existing_test_players) + 1
+                for index in range(start_index, total_needed + 1):
+                    player_id = f'{TEST_PLAYER_PREFIX}{index}'
+                    while player_id in self._lobby_players or player_id in self._game.players:
+                        index += 1
+                        player_id = f'{TEST_PLAYER_PREFIX}{index}'
+                    self._lobby_players[player_id] = LobbyPlayer(
+                        discord_user_id=player_id,
+                        display_name=f'Test Player {index}',
+                    )
+
+            self._persist_locked()
+            return self.list_lobby_players()
+
+    def clear_test_players(self) -> list[LobbyPlayer]:
+        with self._lock:
+            for player_id in list(self._lobby_players.keys()):
+                if player_id.startswith(TEST_PLAYER_PREFIX):
+                    self._lobby_players.pop(player_id, None)
+            self._persist_locked()
+            return self.list_lobby_players()
 
     def remove_lobby_player(self, discord_user_id: str) -> None:
         with self._lock:
