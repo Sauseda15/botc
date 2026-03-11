@@ -114,11 +114,16 @@ type Props = {
   auth: AuthState;
 };
 
-function RoleIcon({ iconUrl, name }: { iconUrl?: string; name: string }) {
-  if (!iconUrl) {
-    return <div className="role-icon-fallback" aria-hidden="true">{name.slice(0, 1)}</div>;
-  }
-  return <img className="role-icon" src={iconUrl} alt={`${name} icon`} />;
+function RoleIcon({ iconUrl, name, variant = "default"}) {
+    if (!iconUrl) return null;
+
+    return (
+        <img
+            className={`role-icon ${variant === "player" ? "player-role-icon" : ""}`}
+            src={iconUrl}
+            alt={`${name} icon`}
+        />
+    );
 }
 
 export default function PlayerView({ auth }: Props) {
@@ -377,7 +382,7 @@ export default function PlayerView({ auth }: Props) {
           <div className="role-heading large">
             <RoleIcon iconUrl={viewerRole?.icon_url} name={state?.viewer?.role_name ?? 'Role'} />
             <div>
-              <p><strong>Role:</strong> {state?.viewer?.role_name ?? 'Hidden until storyteller assigns roles'}</p>
+              <p><strong>Role:</strong> {state?.viewer?.role_name ?? 'Hidden until storyteller assigns roles'} variant="player"</p>
               <p><strong>Alignment:</strong> {state?.viewer?.alignment ?? 'Unknown'}</p>
               <p><strong>Phase:</strong> {state?.phase ?? 'setup'}</p>
             </div>

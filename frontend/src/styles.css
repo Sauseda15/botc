@@ -263,21 +263,27 @@ textarea {
 
 .role-icon,
 .role-icon-fallback {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  border: 1px solid rgba(225, 25, 67, 0.25);
-  background: #0f0f0f;
-  object-fit: cover;
-  flex: 0 0 auto;
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    border: 1px solid rgba(225, 25, 67, 0.25);
+    background: #0f0f0f;
+    object-fit: cover;
+    flex: 0 0 auto;
+}
+
+.player-role-icon {
+    width: 64px;
+    height: 64px;
+    object-fit: contain;
 }
 
 .role-icon-fallback {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  color: var(--red-strong);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    color: var(--red-strong);
 }
 
 .role-heading,
