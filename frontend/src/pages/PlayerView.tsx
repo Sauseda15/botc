@@ -457,7 +457,7 @@ export default function PlayerView({ auth }: Props) {
         </div>
 
         {viewerDemonBluffs.length > 0 ? (
-          <div className="card stack">
+          <div className="card stack bluff-card">
             <h3>Demon Bluffs</h3>
             <p className="muted">These are the storyteller-provided out-of-play roles you can bluff as.</p>
             <div className="role-reference-grid compact">
@@ -561,6 +561,7 @@ export default function PlayerView({ auth }: Props) {
     </section>
   );
 }
+
 
 
 

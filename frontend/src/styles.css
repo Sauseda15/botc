@@ -341,6 +341,31 @@ textarea {
     padding: 12px;
 }
 
+.bluff-card {
+  align-content: start;
+  gap: 10px;
+}
+
+.bluff-card .role-reference-grid.compact {
+  align-content: start;
+  gap: 10px;
+}
+
+.bluff-card .role-reference-card.compact {
+  align-content: start;
+}
+
+.bluff-card .role-reference-grid.compact {
+  align-content: start;
+  gap: 10px;
+}
+
+.bluff-card .role-reference-card.compact {
+  align-content: start;
+}
+    padding: 12px;
+}
+
 @media (max-width: 900px) {
   .hero,
   .split,
