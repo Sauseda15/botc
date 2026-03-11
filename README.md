@@ -5,6 +5,7 @@ This repo is set up around one source of truth:
 - Backend: authoritative game state, permissions, night prompts, votes, logs
 - Website: public town board, player role sheet, player night actions, storyteller dashboard
 - Discord OAuth: browser identity and access control
+- Postgres: persistent storage for game state, lobby, sessions, and OAuth state
 
 ## Current Model
 
@@ -12,12 +13,14 @@ This repo is set up around one source of truth:
 - Storyteller creates the game from the website dashboard
 - Night actions are assigned and submitted in the player web view
 - Day voting also happens on the website
+- State survives Railway restarts when `DATABASE_URL` is configured
 
 ## Prerequisites
 
 - Python 3.12+
 - Node.js 20+
 - A Discord application with OAuth enabled
+- PostgreSQL for production persistence
 
 ## Environment
 
@@ -32,6 +35,7 @@ Required fields:
 
 Recommended fields:
 
+- `DATABASE_URL`
 - `STORYTELLER_DISCORD_IDS`
 - `SESSION_DURATION_HOURS`
 - `ENABLE_DISCORD_BOT=false`
@@ -84,43 +88,18 @@ Then open:
 
 - `http://localhost:5173`
 
-## First End-to-End Test
+## Railway Postgres Setup
 
-1. Log in on the website with the storyteller Discord account.
-2. Open the storyteller dashboard.
-3. Create a game with real Discord user IDs in the setup JSON.
-4. Set roles and alignments in that JSON before creating the game.
-5. Move the game to `night`.
-6. Assign a night prompt to a player from the storyteller dashboard.
-7. Log in on another browser session as that player.
-8. Open the player view and submit a night action.
-9. Confirm the storyteller dashboard shows the submitted response.
-10. Move the game to `day` and test voting from the player view.
-
-## Sample Player JSON
-
-```json
-[
-  {
-    "discord_user_id": "123456789012345678",
-    "display_name": "Alice",
-    "seat": 0,
-    "role_name": "Chef",
-    "alignment": "Good",
-    "reminders": []
-  },
-  {
-    "discord_user_id": "234567890123456789",
-    "display_name": "Bob",
-    "seat": 1,
-    "role_name": "Imp",
-    "alignment": "Evil",
-    "reminders": []
-  }
-]
-```
+1. In Railway, open your single BOTC service project.
+2. Click `New` and add a `PostgreSQL` database service.
+3. Wait for Railway to provision it.
+4. Open the Postgres service and copy the shared `DATABASE_URL` variable Railway generates.
+5. In the app service, make sure `DATABASE_URL` is available in the `production` environment.
+6. Redeploy the app service.
+7. On startup, the backend will create its `app_state` table automatically and load/save the BOTC snapshot there.
 
 ## Notes
 
+- The app uses a simple snapshot persistence layer right now, not a full migration stack.
 - The old Discord game-engine files are still in the repo but are not the active web flow.
 - The checked-in virtualenv files at the repo root are legacy and should not be relied on for a clean setup.

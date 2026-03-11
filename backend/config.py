@@ -29,6 +29,7 @@ class Settings:
     session_duration_hours: int
     storyteller_ids: frozenset[str]
     enable_discord_bot: bool
+    database_url: str | None
 
     @property
     def discord_oauth_ready(self) -> bool:
@@ -43,6 +44,10 @@ class Settings:
         token = (self.discord_token or '').strip()
         return self.enable_discord_bot and bool(token) and token != 'rotate-this-token-before-use'
 
+    @property
+    def database_ready(self) -> bool:
+        return bool((self.database_url or '').strip())
+
 
 settings = Settings(
     discord_token=os.getenv('DISCORD_TOKEN'),
@@ -54,4 +59,5 @@ settings = Settings(
     session_duration_hours=int(os.getenv('SESSION_DURATION_HOURS', '12')),
     storyteller_ids=_parse_csv(os.getenv('STORYTELLER_DISCORD_IDS')),
     enable_discord_bot=os.getenv('ENABLE_DISCORD_BOT', 'false').lower() == 'true',
+    database_url=os.getenv('DATABASE_URL'),
 )

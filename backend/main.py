@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from api import game as game_router
 from auth import router as auth_router
 from config import settings
+from state import store
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -67,6 +68,12 @@ async def run_discord_bot() -> None:
 @app.on_event('startup')
 async def startup_event() -> None:
     global bot_task
+    if settings.database_ready:
+        store.initialize()
+        logger.info('Postgres persistence enabled.')
+    else:
+        logger.info('DATABASE_URL not configured. Using in-memory store.')
+
     if settings.bot_ready and bot_task is None:
         bot_task = asyncio.create_task(run_discord_bot())
     else:
