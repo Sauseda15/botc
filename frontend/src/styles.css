@@ -316,8 +316,8 @@ textarea {
 }
 
 .role-heading.large .player-role-icon {
-    width: 96px;
-    height: 96px;
+    width: 82px;
+    height: 82px;
     object-fit: contain;
     align-self: stretch;
 }
