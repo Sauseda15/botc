@@ -316,8 +316,8 @@ textarea {
 }
 
 .role-heading.large .player-role-icon {
-    width: 104px;
-    height: 104px;
+    width: 96px;
+    height: 96px;
     object-fit: contain;
     align-self: stretch;
 }
@@ -340,6 +340,7 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
+
 
 
 
