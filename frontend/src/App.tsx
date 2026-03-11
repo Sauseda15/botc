@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 
+import { apiUrl } from './api';
 import GameSetup from './pages/GameSetup';
 import PlayerView from './pages/PlayerView';
 import StorytellerDashboard from './pages/StorytellerDashboard';
@@ -22,7 +23,7 @@ export default function App() {
   const [activeView, setActiveView] = useState<ViewKey>('public');
 
   useEffect(() => {
-    fetch('/api/auth/me', { credentials: 'include' })
+    fetch(apiUrl('/api/auth/me'), { credentials: 'include' })
       .then((response) => response.json())
       .then((payload: AuthState) => {
         setAuth(payload);

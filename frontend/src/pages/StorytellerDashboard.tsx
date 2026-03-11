@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
+import { apiUrl } from '../api';
+
 type AuthState = {
   authenticated: boolean;
   user?: {
@@ -137,7 +139,7 @@ export default function StorytellerDashboard({ auth }: Props) {
   const lobbyPlayers = state?.lobby_players ?? [];
 
   const load = () => {
-    fetch('/api/game/storyteller', { credentials: 'include' })
+    fetch(apiUrl('/api/game/storyteller'), { credentials: 'include' })
       .then(async (response) => {
         if (!response.ok) {
           throw new Error('Storyteller access is required for this dashboard.');
@@ -152,7 +154,7 @@ export default function StorytellerDashboard({ auth }: Props) {
   };
 
   useEffect(() => {
-    fetch('/api/game/setup-options', { credentials: 'include' })
+    fetch(apiUrl('/api/game/setup-options'), { credentials: 'include' })
       .then((response) => response.json())
       .then((payload) => setScripts(payload.scripts ?? []))
       .catch(() => setScripts([]));
@@ -196,7 +198,7 @@ export default function StorytellerDashboard({ auth }: Props) {
       return;
     }
 
-    const response = await fetch('/api/game/storyteller/game', {
+    const response = await fetch(apiUrl('/api/game/storyteller/game'), {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -219,7 +221,7 @@ export default function StorytellerDashboard({ auth }: Props) {
   };
 
   const setPhase = async (phase: string) => {
-    const response = await fetch('/api/game/storyteller/phase', {
+    const response = await fetch(apiUrl('/api/game/storyteller/phase'), {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -231,7 +233,7 @@ export default function StorytellerDashboard({ auth }: Props) {
   };
 
   const openNomination = async () => {
-    const response = await fetch('/api/game/storyteller/nomination', {
+    const response = await fetch(apiUrl('/api/game/storyteller/nomination'), {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -243,7 +245,7 @@ export default function StorytellerDashboard({ auth }: Props) {
   };
 
   const addNote = async (night: boolean) => {
-    const response = await fetch('/api/game/storyteller/note', {
+    const response = await fetch(apiUrl('/api/game/storyteller/note'), {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -256,7 +258,7 @@ export default function StorytellerDashboard({ auth }: Props) {
   };
 
   const setAlive = async (discord_user_id: string, is_alive: boolean) => {
-    const response = await fetch('/api/game/storyteller/alive', {
+    const response = await fetch(apiUrl('/api/game/storyteller/alive'), {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -268,7 +270,7 @@ export default function StorytellerDashboard({ auth }: Props) {
   };
 
   const sendNightPrompt = async () => {
-    const response = await fetch('/api/game/storyteller/night-prompt', {
+    const response = await fetch(apiUrl('/api/game/storyteller/night-prompt'), {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },

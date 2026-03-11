@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 
+import { apiUrl } from '../api';
+
 type PublicPlayer = {
   discord_user_id: string;
   display_name: string;
@@ -24,7 +26,7 @@ export default function TownSquare() {
   const [state, setState] = useState<PublicState | null>(null);
 
   useEffect(() => {
-    fetch('/api/game/public', { credentials: 'include' })
+    fetch(apiUrl('/api/game/public'), { credentials: 'include' })
       .then((response) => response.json())
       .then(setState)
       .catch(() => setState(null));

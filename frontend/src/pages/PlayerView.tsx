@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 
+import { apiUrl } from '../api';
+
 type AuthState = {
   authenticated: boolean;
   user?: {
@@ -70,7 +72,7 @@ export default function PlayerView({ auth }: Props) {
     const requestedId = targetPlayerId ?? selectedPlayerId ?? ownPlayerId;
     const search = requestedId ? `?as_player=${encodeURIComponent(requestedId)}` : '';
 
-    fetch(`/api/game/player${search}`, { credentials: 'include' })
+    fetch(apiUrl(`/api/game/player${search}`), { credentials: 'include' })
       .then(async (response) => {
         if (!response.ok) {
           const payload = await response.json().catch(() => ({}));
@@ -92,7 +94,7 @@ export default function PlayerView({ auth }: Props) {
       return;
     }
 
-    fetch('/api/game/storyteller', { credentials: 'include' })
+    fetch(apiUrl('/api/game/storyteller'), { credentials: 'include' })
       .then(async (response) => {
         if (!response.ok) {
           return { players: [] } as StorytellerState;
@@ -127,7 +129,7 @@ export default function PlayerView({ auth }: Props) {
   }, [auth.authenticated, ownPlayerId, isStoryteller, storytellerPlayers.length]);
 
   const castVote = async (approve: boolean) => {
-    const response = await fetch('/api/game/player/vote', {
+    const response = await fetch(apiUrl('/api/game/player/vote'), {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -141,7 +143,7 @@ export default function PlayerView({ auth }: Props) {
   };
 
   const submitNightAction = async () => {
-    const response = await fetch('/api/game/player/night-action', {
+    const response = await fetch(apiUrl('/api/game/player/night-action'), {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },

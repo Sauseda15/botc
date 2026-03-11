@@ -1,5 +1,7 @@
 import React from 'react';
 
+import { apiUrl } from '../api';
+
 type AuthState = {
   authenticated: boolean;
   user?: {
@@ -15,10 +17,10 @@ type Props = {
 };
 
 export default function GameSetup({ auth }: Props) {
-  const loginUrl = '/api/auth/login?next=/';
+  const loginUrl = apiUrl('/api/auth/login?next=/');
 
   const logout = async () => {
-    await fetch('/api/auth/logout', {
+    await fetch(apiUrl('/api/auth/logout'), {
       method: 'POST',
       credentials: 'include',
     });

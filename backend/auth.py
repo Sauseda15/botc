@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from urllib.error import HTTPError
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from urllib.request import Request as UrlRequest, urlopen
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -38,6 +38,12 @@ def _parse_error_body(exc: HTTPError) -> str:
     except Exception:
         return exc.reason if hasattr(exc, 'reason') else str(exc)
     return body or (exc.reason if hasattr(exc, 'reason') else str(exc))
+
+
+def _frontend_cookie_settings() -> tuple[bool, str]:
+    parsed = urlparse(settings.frontend_base_url)
+    is_local = parsed.hostname in {'localhost', '127.0.0.1'}
+    return (not is_local, 'none' if not is_local else 'lax')
 
 
 def _discord_post_form(url: str, form_data: dict[str, str]) -> dict:
@@ -146,13 +152,14 @@ async def callback(code: str, state: str):
         avatar_hash=user_payload.get('avatar'),
     )
 
+    secure_cookie, same_site = _frontend_cookie_settings()
     redirect = RedirectResponse(url=f"{settings.frontend_base_url}{next_path}", status_code=302)
     redirect.set_cookie(
         key=settings.session_cookie_name,
         value=session.session_id,
         httponly=True,
-        secure=False,
-        samesite='lax',
+        secure=secure_cookie,
+        samesite=same_site,
         max_age=settings.session_duration_hours * 60 * 60,
     )
     return redirect
@@ -184,6 +191,7 @@ async def me(session: WebSession | None = Depends(get_optional_session)):
 async def logout(request: Request):
     session_id = request.cookies.get(settings.session_cookie_name)
     store.delete_session(session_id)
+    secure_cookie, same_site = _frontend_cookie_settings()
     response = Response(status_code=204)
-    response.delete_cookie(settings.session_cookie_name)
+    response.delete_cookie(settings.session_cookie_name, secure=secure_cookie, samesite=same_site)
     return response
