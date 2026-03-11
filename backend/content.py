@@ -125,6 +125,30 @@ ALIGNMENT_BY_GROUP = {
     'demons': 'Evil',
 }
 
+PLAYER_SELECTION_COUNTS = {
+    'Fortune Teller': {'target_count': 2},
+    'Monk': {'target_count': 1, 'allow_self': False},
+    'Poisoner': {'target_count': 1},
+    'Imp': {'target_count': 1},
+    'Butler': {'target_count': 1},
+    'Dreamer': {'target_count': 1},
+    'Snake Charmer': {'target_count': 1},
+    'Seamstress': {'target_count': 2},
+    'Witch': {'target_count': 1},
+    'Fang Gu': {'target_count': 1},
+    'Vigormortis': {'target_count': 1},
+    'No Dashii': {'target_count': 1},
+    'Vortox': {'target_count': 1},
+    'Sailor': {'target_count': 1},
+    'Chambermaid': {'target_count': 2},
+    'Exorcist': {'target_count': 1},
+    'Innkeeper': {'target_count': 2},
+    'Devil\'s Advocate': {'target_count': 1},
+    'Zombuul': {'target_count': 1},
+    'Pukka': {'target_count': 1},
+    'Shabaloth': {'target_count': 2},
+}
+
 BASE_DIR = Path(__file__).resolve().parent
 ROLE_DATA_PATH = BASE_DIR / 'discord_bot' / 'utils' / 'role_data.json'
 ROLE_IMAGE_DIR = BASE_DIR / 'discord_bot' / 'utils' / 'photos' / 'role_images'
@@ -164,16 +188,27 @@ def get_role_night_template(role_name: str | None) -> dict[str, object]:
             'requires_approval': False,
             'storyteller_prompt': 'No role assigned yet.',
         }
-    return NIGHT_ACTION_TEMPLATES.get(
-        role_name,
-        {
-            'order': 500,
-            'audience': 'storyteller',
-            'requires_response': False,
-            'requires_approval': False,
-            'storyteller_prompt': f'Resolve {role_name} manually with storyteller judgment.',
-        },
+
+    template = dict(
+        NIGHT_ACTION_TEMPLATES.get(
+            role_name,
+            {
+                'order': 500,
+                'audience': 'storyteller',
+                'requires_response': False,
+                'requires_approval': False,
+                'storyteller_prompt': f'Resolve {role_name} manually with storyteller judgment.',
+            },
+        )
     )
+
+    selection_config = PLAYER_SELECTION_COUNTS.get(role_name)
+    if selection_config:
+        template['input_type'] = 'player_select'
+        template['target_count'] = selection_config['target_count']
+        template['allow_self'] = selection_config.get('allow_self', True)
+
+    return template
 
 
 def get_script_options() -> list[dict[str, object]]:
@@ -256,3 +291,5 @@ def build_night_prompt(script_id: str, role_name: str | None, alignment: str | N
             action_note,
         ]
     )
+
+

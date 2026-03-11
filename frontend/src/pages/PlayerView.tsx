@@ -38,6 +38,9 @@ type NightStep = {
   player_prompt?: string | null;
   storyteller_prompt?: string | null;
   approval_prompt?: string | null;
+  input_type?: string | null;
+  target_count?: number | null;
+  allow_self?: boolean;
   status: string;
   response_text?: string | null;
 };
@@ -71,11 +74,6 @@ type PlayerState = {
     seat: number;
     is_alive: boolean;
   }>;
-  current_nomination?: {
-    nominator_id: string;
-    nominee_id: string;
-    votes: Record<string, boolean>;
-  } | null;
   viewer?: {
     discord_user_id: string;
     display_name: string;
@@ -115,6 +113,7 @@ export default function PlayerView({ auth }: Props) {
   const [publicState, setPublicState] = useState<PublicState | null>(null);
   const [error, setError] = useState<string>('');
   const [nightAction, setNightAction] = useState('');
+  const [selectedTargets, setSelectedTargets] = useState<string[]>([]);
   const [storytellerPlayers, setStorytellerPlayers] = useState<PlayerRecord[]>([]);
   const [selectedPlayerId, setSelectedPlayerId] = useState('');
 
@@ -122,6 +121,15 @@ export default function PlayerView({ auth }: Props) {
   const ownPlayerId = auth.user?.is_player ? auth.user.discord_user_id : '';
   const roleMap = new Map((state?.script_reference?.roles ?? publicState?.script_reference?.roles ?? []).map((role) => [role.name, role]));
   const viewerRole = state?.viewer?.role_name ? roleMap.get(state.viewer.role_name) : undefined;
+  const currentNightStep = state?.current_night_step ?? null;
+  const activeTargetCount = currentNightStep?.input_type === 'player_select' ? (currentNightStep.target_count ?? 1) : 0;
+
+  const selectablePlayers = state?.players.filter((player) => {
+    if (currentNightStep?.allow_self === false && player.discord_user_id === state?.viewer?.discord_user_id) {
+      return false;
+    }
+    return true;
+  }) ?? [];
 
   const loadPublicState = () => {
     fetch(apiUrl('/api/game/public'), { credentials: 'include' })
@@ -145,6 +153,12 @@ export default function PlayerView({ auth }: Props) {
       .then((payload: PlayerState) => {
         setState(payload);
         setNightAction(payload.viewer?.night_action_response ?? '');
+        setSelectedTargets(
+          (payload.viewer?.night_action_response ?? '')
+            .split(',')
+            .map((value) => value.trim())
+            .filter(Boolean)
+        );
         setSelectedPlayerId(payload.viewer?.discord_user_id ?? requestedId ?? '');
         setError('');
       })
@@ -196,6 +210,13 @@ export default function PlayerView({ auth }: Props) {
     setError('');
   }, [auth.authenticated, ownPlayerId, isStoryteller, storytellerPlayers.length]);
 
+  useEffect(() => {
+    if (currentNightStep?.input_type !== 'player_select') {
+      return;
+    }
+    setSelectedTargets((current) => Array.from({ length: activeTargetCount }, (_, index) => current[index] ?? ''));
+  }, [currentNightStep?.step_id, currentNightStep?.input_type, activeTargetCount]);
+
   const castVote = async (approve: boolean) => {
     const response = await fetch(apiUrl('/api/game/player/vote'), {
       method: 'POST',
@@ -210,12 +231,24 @@ export default function PlayerView({ auth }: Props) {
     }
   };
 
+  const updateSelectedTarget = (index: number, value: string) => {
+    setSelectedTargets((current) => {
+      const next = Array.from({ length: activeTargetCount }, (_, targetIndex) => current[targetIndex] ?? '');
+      next[index] = value;
+      return next;
+    });
+  };
+
+  const resolvedNightAction = currentNightStep?.input_type === 'player_select'
+    ? selectedTargets.filter(Boolean).join(', ')
+    : nightAction;
+
   const submitNightAction = async () => {
     const response = await fetch(apiUrl('/api/game/player/night-action'), {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ response: nightAction }),
+      body: JSON.stringify({ response: resolvedNightAction }),
     });
 
     if (response.ok) {
@@ -249,10 +282,11 @@ export default function PlayerView({ auth }: Props) {
 
   const isPreview = Boolean(state?.viewer_context?.is_preview);
   const isNight = state?.phase === 'night';
-  const currentNightStep = state?.current_night_step ?? null;
   const isViewerTurn = currentNightStep?.player_id === state?.viewer?.discord_user_id && currentNightStep?.audience === 'player';
   const canSubmitNightAction = !isPreview && ownPlayerId === state?.viewer?.discord_user_id && Boolean(isViewerTurn);
   const currentTurnLabel = currentNightStep ? `${currentNightStep.player_name}'s` : 'the storyteller\'s';
+  const needsPlayerSelect = currentNightStep?.input_type === 'player_select';
+  const hasAllTargets = !needsPlayerSelect || selectedTargets.filter(Boolean).length === activeTargetCount;
 
   return (
     <section className="panel split">
@@ -303,9 +337,24 @@ export default function PlayerView({ auth }: Props) {
             isViewerTurn ? (
               <>
                 <p><strong>Prompt:</strong> {state?.viewer?.night_action_prompt ?? currentNightStep?.player_prompt ?? 'Wait for the storyteller to assign your night instruction.'}</p>
-                <textarea value={nightAction} onChange={(event) => setNightAction(event.target.value)} placeholder="Enter your night action or question" disabled={!canSubmitNightAction} />
+                {needsPlayerSelect ? (
+                  <div className="stack">
+                    {Array.from({ length: activeTargetCount }, (_, index) => (
+                      <select key={index} value={selectedTargets[index] ?? ''} onChange={(event) => updateSelectedTarget(index, event.target.value)} disabled={!canSubmitNightAction}>
+                        <option value="">Choose player {index + 1}</option>
+                        {selectablePlayers.map((player) => (
+                          <option key={`${index}-${player.discord_user_id}`} value={player.discord_user_id}>
+                            {player.display_name} (Seat {player.seat + 1})
+                          </option>
+                        ))}
+                      </select>
+                    ))}
+                  </div>
+                ) : (
+                  <textarea value={nightAction} onChange={(event) => setNightAction(event.target.value)} placeholder="Enter your night action or question" disabled={!canSubmitNightAction} />
+                )}
                 <div className="inline-form">
-                  <button className="primary" onClick={submitNightAction} disabled={!canSubmitNightAction}>Submit Night Action</button>
+                  <button className="primary" onClick={submitNightAction} disabled={!canSubmitNightAction || !hasAllTargets}>Submit Night Action</button>
                   <button className="secondary" onClick={() => load()}>Refresh</button>
                 </div>
                 {currentNightStep?.status === 'awaiting_approval' ? <p className="muted">Your action is in. The storyteller is reviewing it before the night continues.</p> : null}

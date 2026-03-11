@@ -92,6 +92,9 @@ class NightStep:
     player_prompt: str | None = None
     storyteller_prompt: str | None = None
     approval_prompt: str | None = None
+    input_type: str | None = None
+    target_count: int | None = None
+    allow_self: bool = True
     status: NightStepStatus = NightStepStatus.PENDING
     response_text: str | None = None
     resolution_note: str | None = None
@@ -207,6 +210,9 @@ class GameStore:
             'player_prompt': step.player_prompt,
             'storyteller_prompt': step.storyteller_prompt,
             'approval_prompt': step.approval_prompt,
+            'input_type': step.input_type,
+            'target_count': step.target_count,
+            'allow_self': step.allow_self,
             'status': step.status.value,
             'response_text': step.response_text,
             'resolution_note': step.resolution_note,
@@ -308,6 +314,9 @@ class GameStore:
                     player_prompt=step_snapshot.get('player_prompt'),
                     storyteller_prompt=step_snapshot.get('storyteller_prompt'),
                     approval_prompt=step_snapshot.get('approval_prompt'),
+                    input_type=step_snapshot.get('input_type'),
+                    target_count=step_snapshot.get('target_count'),
+                    allow_self=bool(step_snapshot.get('allow_self', True)),
                     status=NightStepStatus(step_snapshot.get('status', NightStepStatus.PENDING.value)),
                     response_text=step_snapshot.get('response_text'),
                     resolution_note=step_snapshot.get('resolution_note'),
@@ -414,6 +423,9 @@ class GameStore:
                     player_prompt=build_night_prompt(self._game.script, player.role_name, player.alignment, player.reminders),
                     storyteller_prompt=str(template.get('storyteller_prompt') or ''),
                     approval_prompt=str(template.get('approval_prompt') or ''),
+                    input_type=str(template.get('input_type')) if template.get('input_type') else None,
+                    target_count=int(template.get('target_count')) if template.get('target_count') else None,
+                    allow_self=bool(template.get('allow_self', True)),
                     status=NightStepStatus.PENDING,
                 )
             )
@@ -827,6 +839,9 @@ class GameStore:
             'player_prompt': step.player_prompt,
             'storyteller_prompt': step.storyteller_prompt,
             'approval_prompt': step.approval_prompt,
+            'input_type': step.input_type,
+            'target_count': step.target_count,
+            'allow_self': step.allow_self,
             'status': step.status.value,
             'response_text': step.response_text,
             'resolution_note': step.resolution_note,
@@ -898,6 +913,15 @@ class GameStore:
 
 
 store = GameStore()
+
+
+
+
+
+
+
+
+
 
 
 
