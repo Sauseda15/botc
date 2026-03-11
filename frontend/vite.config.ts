@@ -8,5 +8,9 @@ export default defineConfig({
     proxy: {
       '/api': 'http://localhost:8000'
     }
+  },
+  preview: {
+    host: '0.0.0.0',
+    allowedHosts: ['botc.up.railway.app']
   }
 });
