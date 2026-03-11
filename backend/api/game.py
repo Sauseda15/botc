@@ -52,6 +52,8 @@ class StatusUpdateRequest(BaseModel):
     is_poisoned: bool | None = None
     is_drunk: bool | None = None
     pending_death: bool | None = None
+    add_statuses: list[str] = Field(default_factory=list)
+    remove_statuses: list[str] = Field(default_factory=list)
 
 
 class StorytellerNoteRequest(BaseModel):
@@ -176,6 +178,8 @@ async def update_status(payload: StatusUpdateRequest, session: WebSession = Depe
             is_poisoned=payload.is_poisoned,
             is_drunk=payload.is_drunk,
             pending_death=payload.pending_death,
+            add_statuses=payload.add_statuses,
+            remove_statuses=payload.remove_statuses,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -248,6 +252,7 @@ async def submit_night_action(payload: NightActionRequest, session: WebSession =
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return store.get_player_state(target_player_id, viewer_id=session.discord_user_id)
+
 
 
 

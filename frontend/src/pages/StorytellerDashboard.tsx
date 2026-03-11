@@ -53,6 +53,7 @@ type PlayerRecord = {
   private_history: string[];
   night_action_prompt?: string | null;
   storyteller_message?: string | null;
+  status_markers?: string[];
   night_action_response?: string | null;
   night_action_submitted_at?: string | null;
   is_poisoned?: boolean;
@@ -106,6 +107,17 @@ type StorytellerState = {
 type Props = {
   auth: AuthState;
 };
+
+const STATUS_PRESETS = [
+  'Poisoned',
+  'Drunk',
+  'Dies at dawn',
+  'Protected',
+  'Mad',
+  'Good Twin',
+  'Fake Demon',
+  'Show Grimoire',
+];
 
 function buildBlankSeat(seat: number): SetupSeat {
   return {
@@ -350,7 +362,16 @@ export default function StorytellerDashboard({ auth }: Props) {
     }
   };
 
-  const updateStatus = async (discord_user_id: string, patch: { is_poisoned?: boolean; is_drunk?: boolean; pending_death?: boolean }) => {
+  const updateStatus = async (
+    discord_user_id: string,
+    patch: {
+      is_poisoned?: boolean;
+      is_drunk?: boolean;
+      pending_death?: boolean;
+      add_statuses?: string[];
+      remove_statuses?: string[];
+    }
+  ) => {
     const response = await fetch(apiUrl('/api/game/storyteller/status'), {
       method: 'POST',
       credentials: 'include',
@@ -623,7 +644,8 @@ export default function StorytellerDashboard({ auth }: Props) {
                     <div>{player.role_name ?? 'Unassigned'}</div>
                     <div className="muted">{player.alignment ?? 'Alignment hidden'}</div>
                     <div className="muted">Response: {player.night_action_response ?? 'Waiting'}</div>
-                    <div className="muted">Status: {player.is_alive ? 'Alive' : 'Dead'}{player.pending_death ? ' · Dies at dawn' : ''}{player.is_poisoned ? ' · Poisoned' : ''}{player.is_drunk ? ' · Drunk' : ''}</div>
+                    <div className="muted">Status: {player.is_alive ? 'Alive' : 'Dead'}</div>
+                    <div className="muted">Markers: {(player.status_markers ?? []).length > 0 ? (player.status_markers ?? []).join(' · ') : 'None'}</div>
                     {player.storyteller_message ? <div className="muted">Last Info: {player.storyteller_message}</div> : null}
                     <div className="inline-form">
                       <button className="secondary" onClick={() => setAlive(player.discord_user_id, !player.is_alive)}>
@@ -638,6 +660,20 @@ export default function StorytellerDashboard({ auth }: Props) {
                       <button className="secondary" onClick={() => updateStatus(player.discord_user_id, { is_drunk: !player.is_drunk })}>
                         {player.is_drunk ? 'Clear Drunk' : 'Drunk'}
                       </button>
+                    </div>
+                    <div className="inline-form">
+                      {STATUS_PRESETS.map((status) => {
+                        const hasStatus = (player.status_markers ?? []).includes(status);
+                        return (
+                          <button
+                            key={`${player.discord_user_id}-${status}`}
+                            className="secondary"
+                            onClick={() => updateStatus(player.discord_user_id, hasStatus ? { remove_statuses: [status] } : { add_statuses: [status] })}
+                          >
+                            {hasStatus ? `Clear ${status}` : status}
+                          </button>
+                        );
+                      })}
                     </div>
                   </article>
                 );
@@ -677,4 +713,5 @@ export default function StorytellerDashboard({ auth }: Props) {
     </section>
   );
 }
+
 

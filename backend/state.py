@@ -19,6 +19,9 @@ from content import build_night_prompt, get_role_night_template, get_script_refe
 UTC = timezone.utc
 SNAPSHOT_KEY = 'botc_snapshot'
 TEST_PLAYER_PREFIX = 'test-player-'
+STATUS_POISONED = 'Poisoned'
+STATUS_DRUNK = 'Drunk'
+STATUS_DIES_AT_DAWN = 'Dies at dawn'
 
 
 def utcnow() -> datetime:
@@ -76,6 +79,7 @@ class GamePlayer:
     private_history: list[str] = field(default_factory=list)
     night_action_prompt: str | None = None
     storyteller_message: str | None = None
+    status_markers: list[str] = field(default_factory=list)
     is_poisoned: bool = False
     is_drunk: bool = False
     pending_death: bool = False
@@ -187,6 +191,36 @@ class GameStore:
             'joined_at': player.joined_at.isoformat(),
         }
 
+    def _normalize_status_markers(self, markers: list[str] | None) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for marker in markers or []:
+            cleaned = str(marker).strip()
+            if not cleaned or cleaned in seen:
+                continue
+            normalized.append(cleaned)
+            seen.add(cleaned)
+        return normalized
+
+    def _sync_player_status_flags_locked(self, player: GamePlayer) -> None:
+        player.status_markers = self._normalize_status_markers(player.status_markers)
+        marker_set = set(player.status_markers)
+        player.is_poisoned = STATUS_POISONED in marker_set
+        player.is_drunk = STATUS_DRUNK in marker_set
+        player.pending_death = STATUS_DIES_AT_DAWN in marker_set
+
+    def _set_status_marker_locked(self, player: GamePlayer, marker: str, enabled: bool) -> None:
+        cleaned = marker.strip()
+        if not cleaned:
+            return
+        marker_set = set(player.status_markers)
+        if enabled:
+            marker_set.add(cleaned)
+        else:
+            marker_set.discard(cleaned)
+        player.status_markers = sorted(marker_set)
+        self._sync_player_status_flags_locked(player)
+
     def _serialize_game_player_snapshot(self, player: GamePlayer) -> dict[str, Any]:
         return {
             'discord_user_id': player.discord_user_id,
@@ -199,6 +233,7 @@ class GameStore:
             'private_history': player.private_history,
             'night_action_prompt': player.night_action_prompt,
             'storyteller_message': player.storyteller_message,
+            'status_markers': player.status_markers,
             'is_poisoned': player.is_poisoned,
             'is_drunk': player.is_drunk,
             'pending_death': player.pending_death,
@@ -304,9 +339,12 @@ class GameStore:
                     private_history=list(player_snapshot.get('private_history', [])),
                     night_action_prompt=player_snapshot.get('night_action_prompt'),
                     storyteller_message=player_snapshot.get('storyteller_message'),
-                    is_poisoned=bool(player_snapshot.get('is_poisoned', False)),
-                    is_drunk=bool(player_snapshot.get('is_drunk', False)),
-                    pending_death=bool(player_snapshot.get('pending_death', False)),
+                    status_markers=self._normalize_status_markers([
+                        *(player_snapshot.get('status_markers') or []),
+                        *([STATUS_POISONED] if player_snapshot.get('is_poisoned') else []),
+                        *([STATUS_DRUNK] if player_snapshot.get('is_drunk') else []),
+                        *([STATUS_DIES_AT_DAWN] if player_snapshot.get('pending_death') else []),
+                    ]),
                     night_action_response=player_snapshot.get('night_action_response'),
                     night_action_submitted_at=parse_dt(player_snapshot.get('night_action_submitted_at')),
                 )
@@ -342,6 +380,9 @@ class GameStore:
             ],
             active_night_step_id=game_payload.get('active_night_step_id'),
         )
+
+        for player in self._game.players.values():
+            self._sync_player_status_flags_locked(player)
 
         self._sessions = {
             session_id: WebSession(
@@ -436,7 +477,7 @@ class GameStore:
         for player in self._game.players.values():
             if not player.pending_death:
                 continue
-            player.pending_death = False
+            self._set_status_marker_locked(player, STATUS_DIES_AT_DAWN, False)
             if player.is_alive:
                 player.is_alive = False
                 player.storyteller_message = 'You died in the night.'
@@ -469,7 +510,7 @@ class GameStore:
             target = self._game.players.get(player_id)
             if not target:
                 continue
-            target.pending_death = True
+            self._set_status_marker_locked(target, STATUS_DIES_AT_DAWN, True)
             self._skip_future_steps_for_player_locked(player_id, 'Skipped because this player will die at dawn.')
             summary.append(f'dies at dawn: {target.display_name}')
 
@@ -477,28 +518,28 @@ class GameStore:
             target = self._game.players.get(player_id)
             if not target:
                 continue
-            target.is_poisoned = True
+            self._set_status_marker_locked(target, STATUS_POISONED, True)
             summary.append(f'poisoned: {target.display_name}')
 
         for player_id in drunk_target_ids:
             target = self._game.players.get(player_id)
             if not target:
                 continue
-            target.is_drunk = True
+            self._set_status_marker_locked(target, STATUS_DRUNK, True)
             summary.append(f'drunk: {target.display_name}')
 
         for player_id in sober_target_ids:
             target = self._game.players.get(player_id)
             if not target:
                 continue
-            target.is_drunk = False
+            self._set_status_marker_locked(target, STATUS_DRUNK, False)
             summary.append(f'sober: {target.display_name}')
 
         for player_id in healthy_target_ids:
             target = self._game.players.get(player_id)
             if not target:
                 continue
-            target.is_poisoned = False
+            self._set_status_marker_locked(target, STATUS_POISONED, False)
             summary.append(f'healthy: {target.display_name}')
 
         if not summary:
@@ -780,11 +821,15 @@ class GameStore:
                     private_history=list(raw_player.get('private_history', [])),
                     night_action_prompt=raw_player.get('night_action_prompt') or build_night_prompt(script, role_name, alignment, reminders),
                     storyteller_message=raw_player.get('storyteller_message'),
-                    is_poisoned=bool(raw_player.get('is_poisoned', False)),
-                    is_drunk=bool(raw_player.get('is_drunk', False)),
-                    pending_death=bool(raw_player.get('pending_death', False)),
+                    status_markers=self._normalize_status_markers([
+                        *(raw_player.get('status_markers') or []),
+                        *([STATUS_POISONED] if raw_player.get('is_poisoned') else []),
+                        *([STATUS_DRUNK] if raw_player.get('is_drunk') else []),
+                        *([STATUS_DIES_AT_DAWN] if raw_player.get('pending_death') else []),
+                    ]),
                     night_action_response=raw_player.get('night_action_response'),
                 )
+                self._sync_player_status_flags_locked(player_map[discord_user_id])
                 self._lobby_players.pop(discord_user_id, None)
 
             self._game = GameRecord(
@@ -847,7 +892,7 @@ class GameStore:
             player = self._game.players[discord_user_id]
             player.is_alive = is_alive
             if is_alive:
-                player.pending_death = False
+                self._set_status_marker_locked(player, STATUS_DIES_AT_DAWN, False)
                 self._restore_future_steps_for_player_locked(discord_user_id, 'Skipped because this player is dead.')
                 self._restore_future_steps_for_player_locked(discord_user_id, 'Skipped because this player will die at dawn.')
             else:
@@ -866,23 +911,31 @@ class GameStore:
         is_poisoned: bool | None = None,
         is_drunk: bool | None = None,
         pending_death: bool | None = None,
+        add_statuses: list[str] | None = None,
+        remove_statuses: list[str] | None = None,
     ) -> GamePlayer:
         with self._lock:
             player = self._game.players[discord_user_id]
             changes: list[str] = []
             if is_poisoned is not None:
-                player.is_poisoned = is_poisoned
+                self._set_status_marker_locked(player, STATUS_POISONED, is_poisoned)
                 changes.append(f'poisoned={is_poisoned}')
             if is_drunk is not None:
-                player.is_drunk = is_drunk
+                self._set_status_marker_locked(player, STATUS_DRUNK, is_drunk)
                 changes.append(f'drunk={is_drunk}')
             if pending_death is not None:
-                player.pending_death = pending_death
+                self._set_status_marker_locked(player, STATUS_DIES_AT_DAWN, pending_death)
                 changes.append(f'pending_death={pending_death}')
                 if pending_death:
                     self._skip_future_steps_for_player_locked(discord_user_id, 'Skipped because this player will die at dawn.')
                 else:
                     self._restore_future_steps_for_player_locked(discord_user_id, 'Skipped because this player will die at dawn.')
+            for status in self._normalize_status_markers(add_statuses):
+                self._set_status_marker_locked(player, status, True)
+                changes.append(f'added={status}')
+            for status in self._normalize_status_markers(remove_statuses):
+                self._set_status_marker_locked(player, status, False)
+                changes.append(f'removed={status}')
             if changes:
                 self._game.night_feed.append(f'{actor_id} updated {player.display_name}: ' + ', '.join(changes))
             self._touch()
@@ -1042,6 +1095,7 @@ class GameStore:
                 'private_history': player.private_history,
                 'night_action_prompt': player.night_action_prompt,
                 'storyteller_message': player.storyteller_message,
+                'status_markers': player.status_markers,
                 'night_action_response': player.night_action_response,
                 'night_action_submitted_at': player.night_action_submitted_at.isoformat() if player.night_action_submitted_at else None,
             }
@@ -1137,6 +1191,7 @@ class GameStore:
 
 
 store = GameStore()
+
 
 
 
