@@ -215,10 +215,20 @@ export default function StorytellerDashboard({ auth }: Props) {
   const occupiedSeats = new Set((state?.players ?? []).map((player) => player.seat));
   const emptySeats = Array.from({ length: playerCount }, (_, index) => index).filter((seat) => !occupiedSeats.has(seat));
   const nominationState = state?.current_nomination ?? null;
-  const liveVoteSecondsRemaining = nominationState && !nominationState.resolved_at ? Math.max(0, 5 - (Math.floor((nowMs - new Date(nominationState.opened_at).getTime()) / 1000) % 5)) : nominationState?.seconds_remaining ?? 0;
-  const liveVoteIndex = nominationState && !nominationState.resolved_at ? Math.floor((nowMs - new Date(nominationState.opened_at).getTime()) / 1000 / 5) : -1;
-  const liveCurrentVoterId = nominationState && !nominationState.resolved_at ? (nominationState.vote_order[liveVoteIndex] ?? null) : null;
+  const liveElapsedVoteSeconds = nominationState && !nominationState.resolved_at
+    ? Math.max(0, Math.floor((nowMs - new Date(nominationState.opened_at).getTime()) / 1000))
+    : 0;
+  const liveVoteSecondsRemaining = nominationState && !nominationState.resolved_at
+    ? Math.max(0, 10 - (liveElapsedVoteSeconds % 10))
+    : nominationState?.seconds_remaining ?? 0;
+  const liveVoteIndex = nominationState && !nominationState.resolved_at
+    ? Math.floor(liveElapsedVoteSeconds / 10)
+    : -1;
+  const liveCurrentVoterId = nominationState && !nominationState.resolved_at
+    ? (nominationState.vote_order[Math.min(liveVoteIndex, Math.max(nominationState.vote_order.length - 1, 0))] ?? null)
+    : null;
   const storytellerPlayerNameById = new Map((state?.players ?? []).map((player) => [player.discord_user_id, player.display_name]));
+  const liveCurrentVoterName = liveCurrentVoterId ? (storytellerPlayerNameById.get(liveCurrentVoterId) ?? liveCurrentVoterId) : 'Locking votes';
 
   const load = () => {
     fetch(apiUrl('/api/game/storyteller'), { credentials: 'include' })
@@ -730,7 +740,7 @@ export default function StorytellerDashboard({ auth }: Props) {
             <button className="primary" onClick={openNomination}>Open Nomination</button>
             {nominationState ? (
               <div className="muted">
-                Live vote: {storytellerPlayerNameById.get(nominationState.nominator_id) ?? nominationState.nominator_id} nominating {storytellerPlayerNameById.get(nominationState.nominee_id) ?? nominationState.nominee_id}. {nominationState.resolved_at ? `Locked at ${nominationState.result_vote_count} yes.` : `Current voter: ${liveCurrentVoterId ? (storytellerPlayerNameById.get(liveCurrentVoterId) ?? liveCurrentVoterId) : 'Locking votes'} · ${liveVoteSecondsRemaining}s remaining.`}
+                Live vote: {storytellerPlayerNameById.get(nominationState.nominator_id) ?? nominationState.nominator_id} nominating {storytellerPlayerNameById.get(nominationState.nominee_id) ?? nominationState.nominee_id}. {nominationState.resolved_at ? `Locked at ${nominationState.result_vote_count} yes.` : `Current voter: ${liveCurrentVoterName} · ${liveVoteSecondsRemaining}s remaining.`}
               </div>
             ) : null}
             {state?.execution_candidate_id ? <div className="muted">Marked for execution: {storytellerPlayerNameById.get(state.execution_candidate_id) ?? state.execution_candidate_id} ({state.execution_candidate_votes ?? 0} vote(s))</div> : null}
@@ -824,6 +834,7 @@ export default function StorytellerDashboard({ auth }: Props) {
     </section>
   );
 }
+
 
 
 
