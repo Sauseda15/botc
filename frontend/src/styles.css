@@ -179,6 +179,11 @@ h3 {
 
 .stack > .secondary {
     justify-self: center;
+    align-self: center;
+    padding: 18px 36px;
+    font-size: 1.4rem;
+    background: #9B1C1C;
+    border: 1px solid #5c0f0f;
 }
 
 .inline-form {
