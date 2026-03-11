@@ -52,8 +52,12 @@ type PlayerRecord = {
   reminders: string[];
   private_history: string[];
   night_action_prompt?: string | null;
+  storyteller_message?: string | null;
   night_action_response?: string | null;
   night_action_submitted_at?: string | null;
+  is_poisoned?: boolean;
+  is_drunk?: boolean;
+  pending_death?: boolean;
 };
 
 type ScriptReference = {
@@ -163,6 +167,13 @@ export default function StorytellerDashboard({ auth }: Props) {
   const [nomination, setNomination] = useState({ nominator_id: '', nominee_id: '' });
   const [nightPrompt, setNightPrompt] = useState({ discord_user_id: '', prompt: '' });
   const [resolutionNote, setResolutionNote] = useState('');
+  const [nightResolution, setNightResolution] = useState({
+    death_target_id: '',
+    poison_target_id: '',
+    drunk_target_id: '',
+    sober_target_id: '',
+    healthy_target_id: '',
+  });
   const [error, setError] = useState('');
 
   const activeScript = useMemo(
@@ -339,6 +350,19 @@ export default function StorytellerDashboard({ auth }: Props) {
     }
   };
 
+  const updateStatus = async (discord_user_id: string, patch: { is_poisoned?: boolean; is_drunk?: boolean; pending_death?: boolean }) => {
+    const response = await fetch(apiUrl('/api/game/storyteller/status'), {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ discord_user_id, ...patch }),
+    });
+    if (response.ok) {
+      setState(await response.json());
+      setError('');
+    }
+  };
+
   const sendNightPrompt = async () => {
     const response = await fetch(apiUrl('/api/game/storyteller/night-prompt'), {
       method: 'POST',
@@ -357,12 +381,26 @@ export default function StorytellerDashboard({ auth }: Props) {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ resolution_note: resolutionNote || null }),
+      body: JSON.stringify({
+        resolution_note: resolutionNote || null,
+        death_target_ids: nightResolution.death_target_id ? [nightResolution.death_target_id] : [],
+        poison_target_ids: nightResolution.poison_target_id ? [nightResolution.poison_target_id] : [],
+        drunk_target_ids: nightResolution.drunk_target_id ? [nightResolution.drunk_target_id] : [],
+        sober_target_ids: nightResolution.sober_target_id ? [nightResolution.sober_target_id] : [],
+        healthy_target_ids: nightResolution.healthy_target_id ? [nightResolution.healthy_target_id] : [],
+      }),
     });
 
     if (response.ok) {
       setState(await response.json());
       setResolutionNote('');
+      setNightResolution({
+        death_target_id: '',
+        poison_target_id: '',
+        drunk_target_id: '',
+        sober_target_id: '',
+        healthy_target_id: '',
+      });
       setError('');
       return;
     }
@@ -492,7 +530,42 @@ export default function StorytellerDashboard({ auth }: Props) {
                 {currentNightStep.storyteller_prompt ? <p><strong>Storyteller Prompt:</strong> {currentNightStep.storyteller_prompt}</p> : null}
                 {currentNightStep.approval_prompt ? <p><strong>Approval Prompt:</strong> {currentNightStep.approval_prompt}</p> : null}
                 {currentNightStep.response_text ? <p><strong>Player Response:</strong> {currentNightStep.response_text}</p> : null}
-                <textarea value={resolutionNote} onChange={(event) => setResolutionNote(event.target.value)} placeholder="Optional storyteller note or info to pass back before continuing" />
+                {currentNightStep.resolution_note ? <p><strong>Last Resolution:</strong> {currentNightStep.resolution_note}</p> : null}
+                <textarea value={resolutionNote} onChange={(event) => setResolutionNote(event.target.value)} placeholder="Information actually given, result returned, or judgment used for this step" />
+                <div className="row">
+                  <select value={nightResolution.death_target_id} onChange={(event) => setNightResolution({ ...nightResolution, death_target_id: event.target.value })}>
+                    <option value="">No dawn death</option>
+                    {seatOptions.map((player) => (
+                      <option key={`death-${player.discord_user_id}`} value={player.discord_user_id}>{player.display_name}</option>
+                    ))}
+                  </select>
+                  <select value={nightResolution.poison_target_id} onChange={(event) => setNightResolution({ ...nightResolution, poison_target_id: event.target.value })}>
+                    <option value="">No poison update</option>
+                    {seatOptions.map((player) => (
+                      <option key={`poison-${player.discord_user_id}`} value={player.discord_user_id}>{player.display_name}</option>
+                    ))}
+                  </select>
+                  <select value={nightResolution.drunk_target_id} onChange={(event) => setNightResolution({ ...nightResolution, drunk_target_id: event.target.value })}>
+                    <option value="">No drunk update</option>
+                    {seatOptions.map((player) => (
+                      <option key={`drunk-${player.discord_user_id}`} value={player.discord_user_id}>{player.display_name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="row">
+                  <select value={nightResolution.sober_target_id} onChange={(event) => setNightResolution({ ...nightResolution, sober_target_id: event.target.value })}>
+                    <option value="">No sober clear</option>
+                    {seatOptions.map((player) => (
+                      <option key={`sober-${player.discord_user_id}`} value={player.discord_user_id}>{player.display_name}</option>
+                    ))}
+                  </select>
+                  <select value={nightResolution.healthy_target_id} onChange={(event) => setNightResolution({ ...nightResolution, healthy_target_id: event.target.value })}>
+                    <option value="">No poison clear</option>
+                    {seatOptions.map((player) => (
+                      <option key={`healthy-${player.discord_user_id}`} value={player.discord_user_id}>{player.display_name}</option>
+                    ))}
+                  </select>
+                </div>
                 <div className="inline-form">
                   <button className="primary" onClick={() => updateNightStep('advance')}>Advance</button>
                   <button className="secondary" onClick={() => updateNightStep('approve')}>Approve And Continue</button>
@@ -550,9 +623,22 @@ export default function StorytellerDashboard({ auth }: Props) {
                     <div>{player.role_name ?? 'Unassigned'}</div>
                     <div className="muted">{player.alignment ?? 'Alignment hidden'}</div>
                     <div className="muted">Response: {player.night_action_response ?? 'Waiting'}</div>
-                    <button className="secondary" onClick={() => setAlive(player.discord_user_id, !player.is_alive)}>
-                      Mark {player.is_alive ? 'Dead' : 'Alive'}
-                    </button>
+                    <div className="muted">Status: {player.is_alive ? 'Alive' : 'Dead'}{player.pending_death ? ' · Dies at dawn' : ''}{player.is_poisoned ? ' · Poisoned' : ''}{player.is_drunk ? ' · Drunk' : ''}</div>
+                    {player.storyteller_message ? <div className="muted">Last Info: {player.storyteller_message}</div> : null}
+                    <div className="inline-form">
+                      <button className="secondary" onClick={() => setAlive(player.discord_user_id, !player.is_alive)}>
+                        Mark {player.is_alive ? 'Dead' : 'Alive'}
+                      </button>
+                      <button className="secondary" onClick={() => updateStatus(player.discord_user_id, { pending_death: !player.pending_death })}>
+                        {player.pending_death ? 'Clear Dawn Death' : 'Mark Dawn Death'}
+                      </button>
+                      <button className="secondary" onClick={() => updateStatus(player.discord_user_id, { is_poisoned: !player.is_poisoned })}>
+                        {player.is_poisoned ? 'Clear Poison' : 'Poison'}
+                      </button>
+                      <button className="secondary" onClick={() => updateStatus(player.discord_user_id, { is_drunk: !player.is_drunk })}>
+                        {player.is_drunk ? 'Clear Drunk' : 'Drunk'}
+                      </button>
+                    </div>
                   </article>
                 );
               })}
@@ -591,3 +677,4 @@ export default function StorytellerDashboard({ auth }: Props) {
     </section>
   );
 }
+

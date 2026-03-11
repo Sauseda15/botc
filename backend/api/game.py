@@ -47,6 +47,13 @@ class AliveUpdateRequest(BaseModel):
     is_alive: bool
 
 
+class StatusUpdateRequest(BaseModel):
+    discord_user_id: str
+    is_poisoned: bool | None = None
+    is_drunk: bool | None = None
+    pending_death: bool | None = None
+
+
 class StorytellerNoteRequest(BaseModel):
     message: str
     night: bool = False
@@ -68,6 +75,11 @@ class TestPlayersRequest(BaseModel):
 
 class NightAdvanceRequest(BaseModel):
     resolution_note: str | None = None
+    death_target_ids: list[str] = Field(default_factory=list)
+    poison_target_ids: list[str] = Field(default_factory=list)
+    drunk_target_ids: list[str] = Field(default_factory=list)
+    sober_target_ids: list[str] = Field(default_factory=list)
+    healthy_target_ids: list[str] = Field(default_factory=list)
 
 
 @router.get('/setup-options')
@@ -155,6 +167,21 @@ async def update_alive(payload: AliveUpdateRequest, session: WebSession = Depend
     return store.get_storyteller_state()
 
 
+@router.post('/storyteller/status')
+async def update_status(payload: StatusUpdateRequest, session: WebSession = Depends(require_storyteller)):
+    try:
+        store.update_player_status(
+            session.discord_user_id,
+            payload.discord_user_id,
+            is_poisoned=payload.is_poisoned,
+            is_drunk=payload.is_drunk,
+            pending_death=payload.pending_death,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return store.get_storyteller_state()
+
+
 @router.post('/storyteller/note')
 async def add_note(payload: StorytellerNoteRequest, session: WebSession = Depends(require_storyteller)):
     store.add_storyteller_note(session.discord_user_id, payload.message, night=payload.night)
@@ -170,7 +197,15 @@ async def set_night_prompt(payload: NightPromptRequest, session: WebSession = De
 @router.post('/storyteller/night/advance')
 async def advance_night(payload: NightAdvanceRequest, session: WebSession = Depends(require_storyteller)):
     try:
-        return store.advance_night_step(session.discord_user_id, payload.resolution_note)
+        return store.advance_night_step(
+            session.discord_user_id,
+            payload.resolution_note,
+            death_target_ids=payload.death_target_ids,
+            poison_target_ids=payload.poison_target_ids,
+            drunk_target_ids=payload.drunk_target_ids,
+            sober_target_ids=payload.sober_target_ids,
+            healthy_target_ids=payload.healthy_target_ids,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -178,7 +213,15 @@ async def advance_night(payload: NightAdvanceRequest, session: WebSession = Depe
 @router.post('/storyteller/night/approve')
 async def approve_night(payload: NightAdvanceRequest, session: WebSession = Depends(require_storyteller)):
     try:
-        return store.approve_night_step(session.discord_user_id, payload.resolution_note)
+        return store.approve_night_step(
+            session.discord_user_id,
+            payload.resolution_note,
+            death_target_ids=payload.death_target_ids,
+            poison_target_ids=payload.poison_target_ids,
+            drunk_target_ids=payload.drunk_target_ids,
+            sober_target_ids=payload.sober_target_ids,
+            healthy_target_ids=payload.healthy_target_ids,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -205,6 +248,7 @@ async def submit_night_action(payload: NightActionRequest, session: WebSession =
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return store.get_player_state(target_player_id, viewer_id=session.discord_user_id)
+
 
 
 

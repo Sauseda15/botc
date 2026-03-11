@@ -76,6 +76,9 @@ class GamePlayer:
     private_history: list[str] = field(default_factory=list)
     night_action_prompt: str | None = None
     storyteller_message: str | None = None
+    is_poisoned: bool = False
+    is_drunk: bool = False
+    pending_death: bool = False
     night_action_response: str | None = None
     night_action_submitted_at: datetime | None = None
 
@@ -196,6 +199,9 @@ class GameStore:
             'private_history': player.private_history,
             'night_action_prompt': player.night_action_prompt,
             'storyteller_message': player.storyteller_message,
+            'is_poisoned': player.is_poisoned,
+            'is_drunk': player.is_drunk,
+            'pending_death': player.pending_death,
             'night_action_response': player.night_action_response,
             'night_action_submitted_at': player.night_action_submitted_at.isoformat() if player.night_action_submitted_at else None,
         }
@@ -298,6 +304,9 @@ class GameStore:
                     private_history=list(player_snapshot.get('private_history', [])),
                     night_action_prompt=player_snapshot.get('night_action_prompt'),
                     storyteller_message=player_snapshot.get('storyteller_message'),
+                    is_poisoned=bool(player_snapshot.get('is_poisoned', False)),
+                    is_drunk=bool(player_snapshot.get('is_drunk', False)),
+                    pending_death=bool(player_snapshot.get('pending_death', False)),
                     night_action_response=player_snapshot.get('night_action_response'),
                     night_action_submitted_at=parse_dt(player_snapshot.get('night_action_submitted_at')),
                 )
@@ -376,12 +385,13 @@ class GameStore:
         self._game.updated_at = utcnow()
         self._persist_locked()
 
-    def _clear_night_state_locked(self) -> None:
+    def _clear_night_state_locked(self, clear_storyteller_message: bool = False) -> None:
         self._game.night_steps = []
         self._game.active_night_step_id = None
         for player in self._game.players.values():
             player.night_action_prompt = None
-            player.storyteller_message = None
+            if clear_storyteller_message:
+                player.storyteller_message = None
             player.night_action_response = None
             player.night_action_submitted_at = None
 
@@ -407,10 +417,101 @@ class GameStore:
                 player.reminders,
             )
 
+    def _skip_future_steps_for_player_locked(self, discord_user_id: str, reason: str) -> None:
+        for step in self._game.night_steps:
+            if step.player_id == discord_user_id and step.status == NightStepStatus.PENDING:
+                step.status = NightStepStatus.SKIPPED
+                step.completed_at = utcnow()
+                step.resolution_note = reason
+
+    def _restore_future_steps_for_player_locked(self, discord_user_id: str, reason: str) -> None:
+        for step in self._game.night_steps:
+            if step.player_id == discord_user_id and step.status == NightStepStatus.SKIPPED and step.resolution_note == reason:
+                step.status = NightStepStatus.PENDING
+                step.completed_at = None
+                step.resolution_note = None
+
+    def _apply_pending_deaths_locked(self, actor_id: str) -> list[str]:
+        resolved: list[str] = []
+        for player in self._game.players.values():
+            if not player.pending_death:
+                continue
+            player.pending_death = False
+            if player.is_alive:
+                player.is_alive = False
+                player.storyteller_message = 'You died in the night.'
+                player.private_history.append('Storyteller: You died in the night.')
+                resolved.append(player.display_name)
+        if resolved:
+            self._game.log_entries.append(f'{actor_id} revealed dawn deaths: {", ".join(resolved)}.')
+        return resolved
+
+    def _apply_night_resolution_locked(
+        self,
+        actor_id: str,
+        step: NightStep,
+        resolution_note: str | None,
+        death_target_ids: list[str],
+        poison_target_ids: list[str],
+        drunk_target_ids: list[str],
+        sober_target_ids: list[str],
+        healthy_target_ids: list[str],
+    ) -> list[str]:
+        summary: list[str] = []
+        if resolution_note:
+            player = self._game.players.get(step.player_id)
+            if player:
+                player.storyteller_message = resolution_note
+                player.private_history.append(f'Storyteller: {resolution_note}')
+            summary.append(f'info given: {resolution_note}')
+
+        for player_id in death_target_ids:
+            target = self._game.players.get(player_id)
+            if not target:
+                continue
+            target.pending_death = True
+            self._skip_future_steps_for_player_locked(player_id, 'Skipped because this player will die at dawn.')
+            summary.append(f'dies at dawn: {target.display_name}')
+
+        for player_id in poison_target_ids:
+            target = self._game.players.get(player_id)
+            if not target:
+                continue
+            target.is_poisoned = True
+            summary.append(f'poisoned: {target.display_name}')
+
+        for player_id in drunk_target_ids:
+            target = self._game.players.get(player_id)
+            if not target:
+                continue
+            target.is_drunk = True
+            summary.append(f'drunk: {target.display_name}')
+
+        for player_id in sober_target_ids:
+            target = self._game.players.get(player_id)
+            if not target:
+                continue
+            target.is_drunk = False
+            summary.append(f'sober: {target.display_name}')
+
+        for player_id in healthy_target_ids:
+            target = self._game.players.get(player_id)
+            if not target:
+                continue
+            target.is_poisoned = False
+            summary.append(f'healthy: {target.display_name}')
+
+        if not summary:
+            summary.append('no storyteller updates recorded')
+        return summary
+
     def _build_night_steps_locked(self) -> list[NightStep]:
         steps: list[NightStep] = []
         night_number = max(self._game.night_count, 1)
-        active_players = [player for player in self._game.players.values() if player.is_alive and player.role_name]
+        active_players = [
+            player for player in self._game.players.values()
+            if player.is_alive and not player.pending_death and player.role_name
+        ]
         ordered_players = sorted(
             active_players,
             key=lambda player: (int(get_role_night_template(player.role_name, night_number).get('order', 999)), player.seat),
@@ -455,7 +556,17 @@ class GameStore:
         self._game.night_feed.append(f'Night order: {next_step.player_name} ({next_step.role_name}) is now active.')
         return next_step
 
-    def _complete_current_night_step_locked(self, actor_id: str, resolution_note: str | None = None, approved: bool = False) -> NightStep | None:
+    def _complete_current_night_step_locked(
+        self,
+        actor_id: str,
+        resolution_note: str | None = None,
+        approved: bool = False,
+        death_target_ids: list[str] | None = None,
+        poison_target_ids: list[str] | None = None,
+        drunk_target_ids: list[str] | None = None,
+        sober_target_ids: list[str] | None = None,
+        healthy_target_ids: list[str] | None = None,
+    ) -> NightStep | None:
         step = self._get_night_step_locked(self._game.active_night_step_id)
         if not step:
             return None
@@ -468,12 +579,18 @@ class GameStore:
         step.completed_at = utcnow()
         if resolution_note:
             step.resolution_note = resolution_note
-        player = self._game.players.get(step.player_id)
-        if resolution_note and player:
-            player.storyteller_message = resolution_note
-            player.private_history.append(f'Storyteller: {resolution_note}')
+        summary = self._apply_night_resolution_locked(
+            actor_id,
+            step,
+            resolution_note,
+            death_target_ids or [],
+            poison_target_ids or [],
+            drunk_target_ids or [],
+            sober_target_ids or [],
+            healthy_target_ids or [],
+        )
         self._game.night_feed.append(
-            f'{actor_id} {"approved" if approved else "completed"} {step.player_name} ({step.role_name}) and advanced the night.'
+            f'{actor_id} {"approved" if approved else "completed"} {step.player_name} ({step.role_name}): ' + '; '.join(summary)
         )
         self._activate_next_night_step_locked()
         return step
@@ -662,6 +779,10 @@ class GameStore:
                     reminders=reminders,
                     private_history=list(raw_player.get('private_history', [])),
                     night_action_prompt=raw_player.get('night_action_prompt') or build_night_prompt(script, role_name, alignment, reminders),
+                    storyteller_message=raw_player.get('storyteller_message'),
+                    is_poisoned=bool(raw_player.get('is_poisoned', False)),
+                    is_drunk=bool(raw_player.get('is_drunk', False)),
+                    pending_death=bool(raw_player.get('pending_death', False)),
                     night_action_response=raw_player.get('night_action_response'),
                 )
                 self._lobby_players.pop(discord_user_id, None)
@@ -675,7 +796,7 @@ class GameStore:
                 players=player_map,
                 log_entries=[f'Game created by storyteller {storyteller_id}.'],
             )
-            self._clear_night_state_locked()
+            self._clear_night_state_locked(clear_storyteller_message=True)
             self._persist_locked()
             return self._game
 
@@ -684,10 +805,14 @@ class GameStore:
             self._game.phase = phase
             if phase == GamePhase.NIGHT:
                 self._game.night_count += 1
-                self._clear_night_state_locked()
+                self._clear_night_state_locked(clear_storyteller_message=True)
                 self._game.night_steps = self._build_night_steps_locked()
                 self._activate_next_night_step_locked()
             else:
+                if phase == GamePhase.DAY:
+                    dawn_deaths = self._apply_pending_deaths_locked(actor_id)
+                    if dawn_deaths:
+                        self._game.night_feed.append('Dawn deaths: ' + ', '.join(dawn_deaths))
                 self._clear_night_state_locked()
             self._game.log_entries.append(f'{actor_id} moved the game to {phase.value}.')
             self._touch()
@@ -721,9 +846,45 @@ class GameStore:
         with self._lock:
             player = self._game.players[discord_user_id]
             player.is_alive = is_alive
+            if is_alive:
+                player.pending_death = False
+                self._restore_future_steps_for_player_locked(discord_user_id, 'Skipped because this player is dead.')
+                self._restore_future_steps_for_player_locked(discord_user_id, 'Skipped because this player will die at dawn.')
+            else:
+                self._skip_future_steps_for_player_locked(discord_user_id, 'Skipped because this player is dead.')
             self._game.log_entries.append(
                 f'{actor_id} marked {discord_user_id} as {"alive" if is_alive else "dead"}.'
             )
+            self._touch()
+            return player
+
+    def update_player_status(
+        self,
+        actor_id: str,
+        discord_user_id: str,
+        *,
+        is_poisoned: bool | None = None,
+        is_drunk: bool | None = None,
+        pending_death: bool | None = None,
+    ) -> GamePlayer:
+        with self._lock:
+            player = self._game.players[discord_user_id]
+            changes: list[str] = []
+            if is_poisoned is not None:
+                player.is_poisoned = is_poisoned
+                changes.append(f'poisoned={is_poisoned}')
+            if is_drunk is not None:
+                player.is_drunk = is_drunk
+                changes.append(f'drunk={is_drunk}')
+            if pending_death is not None:
+                player.pending_death = pending_death
+                changes.append(f'pending_death={pending_death}')
+                if pending_death:
+                    self._skip_future_steps_for_player_locked(discord_user_id, 'Skipped because this player will die at dawn.')
+                else:
+                    self._restore_future_steps_for_player_locked(discord_user_id, 'Skipped because this player will die at dawn.')
+            if changes:
+                self._game.night_feed.append(f'{actor_id} updated {player.display_name}: ' + ', '.join(changes))
             self._touch()
             return player
 
@@ -787,15 +948,43 @@ class GameStore:
             self._touch()
             return player
 
-    def advance_night_step(self, actor_id: str, resolution_note: str | None = None) -> dict[str, Any]:
+    def advance_night_step(
+        self,
+        actor_id: str,
+        resolution_note: str | None = None,
+        *,
+        death_target_ids: list[str] | None = None,
+        poison_target_ids: list[str] | None = None,
+        drunk_target_ids: list[str] | None = None,
+        sober_target_ids: list[str] | None = None,
+        healthy_target_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
         with self._lock:
             if self._game.phase != GamePhase.NIGHT:
                 raise ValueError('You can only advance the night during the night phase.')
-            self._complete_current_night_step_locked(actor_id, resolution_note=resolution_note)
+            self._complete_current_night_step_locked(
+                actor_id,
+                resolution_note=resolution_note,
+                death_target_ids=death_target_ids,
+                poison_target_ids=poison_target_ids,
+                drunk_target_ids=drunk_target_ids,
+                sober_target_ids=sober_target_ids,
+                healthy_target_ids=healthy_target_ids,
+            )
             self._touch()
             return self.get_storyteller_state()
 
-    def approve_night_step(self, actor_id: str, resolution_note: str | None = None) -> dict[str, Any]:
+    def approve_night_step(
+        self,
+        actor_id: str,
+        resolution_note: str | None = None,
+        *,
+        death_target_ids: list[str] | None = None,
+        poison_target_ids: list[str] | None = None,
+        drunk_target_ids: list[str] | None = None,
+        sober_target_ids: list[str] | None = None,
+        healthy_target_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
         with self._lock:
             if self._game.phase != GamePhase.NIGHT:
                 raise ValueError('You can only approve night actions during the night phase.')
@@ -804,7 +993,16 @@ class GameStore:
                 raise ValueError('There is no active night step right now.')
             if step.status not in {NightStepStatus.AWAITING_APPROVAL, NightStepStatus.ACTIVE}:
                 raise ValueError('This night step does not need storyteller approval.')
-            self._complete_current_night_step_locked(actor_id, resolution_note=resolution_note, approved=True)
+            self._complete_current_night_step_locked(
+                actor_id,
+                resolution_note=resolution_note,
+                approved=True,
+                death_target_ids=death_target_ids,
+                poison_target_ids=poison_target_ids,
+                drunk_target_ids=drunk_target_ids,
+                sober_target_ids=sober_target_ids,
+                healthy_target_ids=healthy_target_ids,
+            )
             self._touch()
             return self.get_storyteller_state()
 
@@ -822,6 +1020,17 @@ class GameStore:
             'seat': player.seat,
             'is_alive': player.is_alive,
         }
+
+    def _serialize_player_storyteller(self, player: GamePlayer) -> dict[str, Any]:
+        payload = self._serialize_player_private(player)
+        payload.update(
+            {
+                'is_poisoned': player.is_poisoned,
+                'is_drunk': player.is_drunk,
+                'pending_death': player.pending_death,
+            }
+        )
+        return payload
 
     def _serialize_player_private(self, player: GamePlayer) -> dict[str, Any]:
         payload = self._serialize_player_public(player)
@@ -915,7 +1124,7 @@ class GameStore:
                 'script_reference': get_script_reference(self._game.script),
                 'phase': self._game.phase.value,
                 'storyteller_id': self._game.storyteller_id,
-                'players': [self._serialize_player_private(player) for player in players],
+                'players': [self._serialize_player_storyteller(player) for player in players],
                 'lobby_players': [self._serialize_lobby_player(player) for player in lobby_players],
                 'current_nomination': self.serialize_nomination(),
                 'log_entries': self._game.log_entries[-50:],
@@ -928,6 +1137,9 @@ class GameStore:
 
 
 store = GameStore()
+
+
+
 
 
 
