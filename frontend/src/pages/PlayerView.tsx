@@ -399,7 +399,7 @@ export default function PlayerView({ auth }: Props) {
           <div></div>
 
           <p className="role-line">
-            <strong>Phase:</strong> {state?.phase?.charAt(0).toUpperCase() + state?.phase.slice(1) ?? 'setup'}
+            <strong>Phase:</strong> {state?.phase?.charAt(0).toUpperCase() + state?.phase?.slice(1) ?? 'setup'}
            </p>
         </div>
 
