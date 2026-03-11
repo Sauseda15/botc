@@ -210,6 +210,12 @@ textarea {
   color: var(--text);
 }
 
+select {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  min-height: 42px;
+}
+
 textarea {
   min-height: 88px;
   resize: vertical;
