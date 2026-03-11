@@ -273,9 +273,9 @@ textarea {
 }
 
 .player-role-icon {
-    width: 64px;
-    height: 64px;
-    object-fit: contain;
+    height: 100%;
+    width: auto;
+    max-height: 72px; /* safety cap*/
 }
 
 .role-icon-fallback {
@@ -294,7 +294,9 @@ textarea {
 }
 
 .role-heading.large {
-  align-items: start;
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
 }
 
 .role-heading.large .role-icon,
