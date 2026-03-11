@@ -65,6 +65,7 @@ type PublicState = {
   current_nomination?: {
     nominator_id: string;
     nominee_id: string;
+    opened_at: string;
     votes: Record<string, boolean>;
     vote_order: string[];
     current_voter_id?: string | null;
