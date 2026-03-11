@@ -149,6 +149,34 @@ PLAYER_SELECTION_COUNTS = {
     'Shabaloth': {'target_count': 2},
 }
 
+ROLE_STATUS_DEFINITIONS = {
+    'Monk': ['Protected'],
+    "Devil's Advocate": ['Protected'],
+    'Innkeeper': ['Protected', 'Drunk'],
+    'Sailor': ['Drunk'],
+    'Courtier': ['Drunk'],
+    'Sweetheart': ['Drunk'],
+    'Poisoner': ['Poisoned'],
+    'Pukka': ['Poisoned', 'Dies at dawn'],
+    'No Dashii': ['Poisoned'],
+    'Imp': ['Dies at dawn'],
+    'Fang Gu': ['Dies at dawn'],
+    'Vigormortis': ['Dies at dawn'],
+    'Vortox': ['Dies at dawn'],
+    'Zombuul': ['Dies at dawn'],
+    'Shabaloth': ['Dies at dawn'],
+    'Po': ['Dies at dawn'],
+    'Assassin': ['Dies at dawn'],
+    'Gossip': ['Dies at dawn'],
+    'Tinker': ['Dies at dawn'],
+    'Moonchild': ['Dies at dawn'],
+    'Cerenovus': ['Mad'],
+    'Mutant': ['Mad'],
+    'Evil Twin': ['Good Twin'],
+    'Lunatic': ['Fake Demon'],
+    'Spy': ['Show Grimoire'],
+}
+
 BASE_DIR = Path(__file__).resolve().parent
 ROLE_DATA_PATH = BASE_DIR / 'discord_bot' / 'utils' / 'role_data.json'
 ROLE_IMAGE_DIR = BASE_DIR / 'discord_bot' / 'utils' / 'photos' / 'role_images'
@@ -169,13 +197,14 @@ def load_role_icon_map() -> dict[str, str]:
     return payload
 
 
-def build_role_entry(name: str, group: str, descriptions: dict[str, str], icons: dict[str, str]) -> dict[str, str]:
+def build_role_entry(name: str, group: str, descriptions: dict[str, str], icons: dict[str, str]) -> dict[str, object]:
     return {
         'name': name,
         'alignment': ALIGNMENT_BY_GROUP[group],
         'group': group,
         'description': descriptions.get(name, 'No role description available yet.'),
         'icon_url': icons.get(name, ''),
+        'statuses': get_role_statuses(name),
     }
 
 
@@ -270,6 +299,18 @@ def infer_alignment(script_id: str, role_name: str | None) -> str | None:
     return None
 
 
+def get_role_statuses(role_name: str | None) -> list[str]:
+    if not role_name:
+        return []
+    return list(ROLE_STATUS_DEFINITIONS.get(role_name, []))
+
+
+def get_game_status_options(role_names: list[str | None]) -> list[str]:
+    statuses = {'Poisoned', 'Drunk', 'Dies at dawn'}
+    for role_name in role_names:
+        statuses.update(get_role_statuses(role_name))
+    return sorted(statuses)
+
 def build_night_prompt(script_id: str, role_name: str | None, alignment: str | None, reminders: list[str] | None = None) -> str | None:
     if not role_name:
         return None
@@ -300,6 +341,8 @@ def build_night_prompt(script_id: str, role_name: str | None, alignment: str | N
             action_note,
         ]
     )
+
+
 
 
 

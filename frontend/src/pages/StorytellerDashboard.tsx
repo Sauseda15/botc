@@ -18,6 +18,7 @@ type RoleOption = {
   group: string;
   description: string;
   icon_url: string;
+  statuses?: string[];
 };
 
 type ScriptOption = {
@@ -91,6 +92,7 @@ type StorytellerState = {
   script_reference: ScriptReference;
   phase: string;
   storyteller_id?: string | null;
+  available_statuses?: string[];
   players: PlayerRecord[];
   lobby_players: LobbyPlayer[];
   current_nomination?: {
@@ -108,16 +110,6 @@ type Props = {
   auth: AuthState;
 };
 
-const STATUS_PRESETS = [
-  'Poisoned',
-  'Drunk',
-  'Dies at dawn',
-  'Protected',
-  'Mad',
-  'Good Twin',
-  'Fake Demon',
-  'Show Grimoire',
-];
 
 function buildBlankSeat(seat: number): SetupSeat {
   return {
@@ -201,6 +193,7 @@ export default function StorytellerDashboard({ auth }: Props) {
   const playersNeeded = Math.max(playerCount - filledSeats, 0);
   const canCreateGame = filledSeats === playerCount && assignedSeats === playerCount;
   const currentNightStep = state?.current_night_step ?? null;
+  const availableStatuses = state?.available_statuses ?? ['Poisoned', 'Drunk', 'Dies at dawn'];
 
   const load = () => {
     fetch(apiUrl('/api/game/storyteller'), { credentials: 'include' })
@@ -517,6 +510,7 @@ export default function StorytellerDashboard({ auth }: Props) {
                     <span>{role.name}</span>
                   </span>
                   <small>{role.group} · {role.alignment}</small>
+                  {role.statuses?.length ? <small>Statuses: {role.statuses.join(' · ')}</small> : null}
                 </button>
               ))}
             </div>
@@ -662,7 +656,7 @@ export default function StorytellerDashboard({ auth }: Props) {
                       </button>
                     </div>
                     <div className="inline-form">
-                      {STATUS_PRESETS.map((status) => {
+                      {availableStatuses.map((status) => {
                         const hasStatus = (player.status_markers ?? []).includes(status);
                         return (
                           <button
@@ -713,5 +707,9 @@ export default function StorytellerDashboard({ auth }: Props) {
     </section>
   );
 }
+
+
+
+
 
 

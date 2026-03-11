@@ -13,7 +13,7 @@ from psycopg import connect
 from psycopg.rows import dict_row
 
 from config import settings
-from content import build_night_prompt, get_role_night_template, get_script_reference, infer_alignment
+from content import build_night_prompt, get_game_status_options, get_role_night_template, get_script_reference, infer_alignment
 
 
 UTC = timezone.utc
@@ -1171,6 +1171,7 @@ class GameStore:
         with self._lock:
             players = sorted(self._game.players.values(), key=lambda player: player.seat)
             lobby_players = self.list_lobby_players()
+            available_statuses = get_game_status_options([player.role_name for player in players])
             return {
                 'game_id': self._game.game_id,
                 'name': self._game.name,
@@ -1178,6 +1179,7 @@ class GameStore:
                 'script_reference': get_script_reference(self._game.script),
                 'phase': self._game.phase.value,
                 'storyteller_id': self._game.storyteller_id,
+                'available_statuses': available_statuses,
                 'players': [self._serialize_player_storyteller(player) for player in players],
                 'lobby_players': [self._serialize_lobby_player(player) for player in lobby_players],
                 'current_nomination': self.serialize_nomination(),
@@ -1191,6 +1193,7 @@ class GameStore:
 
 
 store = GameStore()
+
 
 
 
