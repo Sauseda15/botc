@@ -1039,6 +1039,59 @@ class GameStore:
             self._touch()
             return player
 
+    def _resolve_history_targets_locked(self, response_text: str) -> list[str]:
+        targets: list[str] = []
+        for raw_target in response_text.split(','):
+            token = raw_target.strip()
+            if not token:
+                continue
+            player = self._game.players.get(token)
+            targets.append(player.display_name if player else token)
+        return targets
+
+    def _format_private_history_entry_locked(self, player: GamePlayer, response_text: str) -> str:
+        role_name = player.role_name or 'Night action'
+        cleaned = response_text.strip()
+        targets = self._resolve_history_targets_locked(cleaned)
+        if role_name == 'Imp' and targets:
+            return f'Imp marked {targets[0]} to die at dawn.'
+        if role_name == 'Fortune Teller' and len(targets) >= 2:
+            return f'Fortune Teller checked {targets[0]} and {targets[1]}.'
+        if role_name == 'Monk' and targets:
+            return f'Monk protected {targets[0]} for the night.'
+        if role_name == 'Poisoner' and targets:
+            return f'Poisoner chose to poison {targets[0]}.'
+        if role_name == 'Butler' and targets:
+            return f'Butler chose to follow {targets[0]} tomorrow.'
+        if role_name == 'Dreamer' and targets:
+            return f'Dreamer selected {targets[0]} for a reading.'
+        if role_name == 'Snake Charmer' and targets:
+            return f'Snake Charmer targeted {targets[0]}.'
+        if role_name == 'Seamstress' and len(targets) >= 2:
+            return f'Seamstress compared {targets[0]} and {targets[1]}.'
+        if role_name == 'Witch' and targets:
+            return f'Witch hexed {targets[0]}.'
+        if role_name in {'Fang Gu', 'Vigormortis', 'No Dashii', 'Vortox', 'Zombuul'} and targets:
+            return f'{role_name} chose {targets[0]} as the target.'
+        if role_name == 'Sailor' and targets:
+            return f'Sailor drank with {targets[0]}.'
+        if role_name == 'Chambermaid' and len(targets) >= 2:
+            return f'Chambermaid checked whether {targets[0]} and {targets[1]} woke tonight.'
+        if role_name == 'Exorcist' and targets:
+            return f'Exorcist attempted to block {targets[0]}.'
+        if role_name == 'Innkeeper' and len(targets) >= 2:
+            return f'Innkeeper protected {targets[0]} and {targets[1]}.'
+        if role_name == 'Pukka' and targets:
+            return f'Pukka poisoned {targets[0]}.'
+        if role_name == 'Shabaloth' and len(targets) >= 2:
+            return f'Shabaloth targeted {targets[0]} and {targets[1]}.'
+        if targets:
+            if len(targets) == 1:
+                return f'{role_name} targeted {targets[0]}.'
+            return f"{role_name} targeted {', '.join(targets[:-1])} and {targets[-1]}."
+        if cleaned:
+            return f'{role_name} submitted: {cleaned}'
+        return f'{role_name} submitted a night action.'
     def submit_night_action(self, discord_user_id: str, response_text: str) -> GamePlayer:
         with self._lock:
             if self._game.phase != GamePhase.NIGHT:
@@ -1052,7 +1105,7 @@ class GameStore:
             player = self._game.players[discord_user_id]
             player.night_action_response = response_text
             player.night_action_submitted_at = utcnow()
-            player.private_history.append(f'Night action submitted: {response_text}')
+            player.private_history.append(self._format_private_history_entry_locked(player, response_text))
             active_step.response_text = response_text
             if active_step.requires_approval:
                 active_step.status = NightStepStatus.AWAITING_APPROVAL
