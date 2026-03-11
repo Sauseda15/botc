@@ -279,6 +279,27 @@ export default function PlayerView({ auth }: Props) {
     setError(payload.detail ?? 'Night action submission failed.');
   };
 
+  const signalGrimoireReady = async () => {
+    const response = await fetch(apiUrl('/api/game/player/night-ready'), {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        target_player_id: isPreview ? state?.viewer?.discord_user_id ?? null : null,
+      }),
+    });
+
+    if (response.ok) {
+      const payload = await response.json();
+      setState(payload);
+      setError('');
+      return;
+    }
+
+    const payload = await response.json();
+    setError(payload.detail ?? 'Ready signal failed.');
+  };
+
   if (!auth.authenticated) {
     return <section className="panel"><p>Log in with Discord to see your player view.</p></section>;
   }
@@ -305,6 +326,7 @@ export default function PlayerView({ auth }: Props) {
 
   const needsPlayerSelect = currentNightStep?.input_type === 'player_select';
   const hasAllTargets = !needsPlayerSelect || selectedTargets.filter(Boolean).length === activeTargetCount;
+  const canSignalGrimoireReady = Boolean(viewerGrimoire) && Boolean(isViewerTurn);
 
   return (
     <section className="panel split">
@@ -377,6 +399,11 @@ export default function PlayerView({ auth }: Props) {
                   <button className="primary" onClick={submitNightAction} disabled={(!(canSubmitNightAction || canPreviewSubmit)) || !hasAllTargets}>
                     {canPreviewSubmit ? 'Submit Test Night Action' : 'Submit Night Action'}
                   </button>
+                  {canSignalGrimoireReady ? (
+                    <button className="secondary" onClick={signalGrimoireReady}>
+                      {isPreview ? 'Mark Spy Done (Test)' : 'I Reviewed The Grimoire'}
+                    </button>
+                  ) : null}
                   <button className="secondary" onClick={() => load()}>Refresh</button>
                 </div>
                 {canPreviewSubmit ? <p className="muted">Storyteller preview can submit a test action for this player while you are debugging.</p> : null}
@@ -474,6 +501,7 @@ export default function PlayerView({ auth }: Props) {
     </section>
   );
 }
+
 
 
 

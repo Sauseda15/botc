@@ -1001,6 +1001,26 @@ class GameStore:
             self._touch()
             return player
 
+    def signal_night_step_ready(self, discord_user_id: str) -> GamePlayer:
+        with self._lock:
+            if self._game.phase != GamePhase.NIGHT:
+                raise ValueError('Night readiness can only be signaled during the night phase.')
+            active_step = self._get_night_step_locked(self._game.active_night_step_id)
+            if not active_step:
+                raise ValueError('There is no active night step right now.')
+            if active_step.player_id != discord_user_id:
+                raise ValueError('It is not your turn in the night order.')
+
+            player = self._game.players[discord_user_id]
+            if not self._viewer_can_see_grimoire_locked(player, active_step):
+                raise ValueError('This player does not currently have a reviewable grimoire window.')
+
+            player.private_history.append('Marked grimoire review as complete.')
+            active_step.response_text = 'Spy has finished reviewing the grimoire.'
+            self._game.night_feed.append(f'{player.display_name} signaled that they are done reviewing the grimoire.')
+            self._touch()
+            return player
+
     def advance_night_step(
         self,
         actor_id: str,
@@ -1215,6 +1235,7 @@ class GameStore:
 
 
 store = GameStore()
+
 
 
 

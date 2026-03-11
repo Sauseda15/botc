@@ -71,6 +71,10 @@ class NightActionRequest(BaseModel):
     target_player_id: str | None = None
 
 
+class NightReadyRequest(BaseModel):
+    target_player_id: str | None = None
+
+
 class TestPlayersRequest(BaseModel):
     target_count: int = Field(ge=0, le=20)
 
@@ -252,6 +256,25 @@ async def submit_night_action(payload: NightActionRequest, session: WebSession =
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return store.get_player_state(target_player_id, viewer_id=session.discord_user_id)
+
+
+@router.post('/player/night-ready')
+async def signal_night_ready(payload: NightReadyRequest, session: WebSession = Depends(require_session)):
+    target_player_id = session.discord_user_id
+    if payload.target_player_id and payload.target_player_id != session.discord_user_id:
+        if not store.is_storyteller(session.discord_user_id):
+            raise HTTPException(status_code=403, detail='Only storytellers can mark another player ready in preview mode.')
+        target_player_id = payload.target_player_id
+
+    if target_player_id not in store.current_game().players:
+        raise HTTPException(status_code=403, detail='That player is not seated in the current game.')
+
+    try:
+        store.signal_night_step_ready(target_player_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return store.get_player_state(target_player_id, viewer_id=session.discord_user_id)
+
 
 
 
