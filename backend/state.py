@@ -1074,6 +1074,25 @@ class GameStore:
             'is_alive': player.is_alive,
         }
 
+    def _serialize_grimoire_entry_for_player(self, player: GamePlayer) -> dict[str, Any]:
+        return {
+            'discord_user_id': player.discord_user_id,
+            'display_name': player.display_name,
+            'seat': player.seat,
+            'is_alive': player.is_alive,
+            'role_name': player.role_name,
+            'alignment': player.alignment,
+            'status_markers': player.status_markers,
+            'reminders': player.reminders,
+        }
+
+    def _viewer_can_see_grimoire_locked(self, player: GamePlayer, step: NightStep | None) -> bool:
+        if 'Show Grimoire' not in player.status_markers:
+            return False
+        if not step:
+            return False
+        return step.player_id == player.discord_user_id and step.role_name == player.role_name
+
     def _serialize_player_storyteller(self, player: GamePlayer) -> dict[str, Any]:
         payload = self._serialize_player_private(player)
         payload.update(
@@ -1156,15 +1175,18 @@ class GameStore:
         with self._lock:
             player = self._game.players[discord_user_id]
             public_state = self.get_public_state()
+            current_step = self._get_night_step_locked(self._game.active_night_step_id)
             public_state['viewer'] = self._serialize_player_private(player)
             public_state['viewer_context'] = {
                 'requested_player_id': discord_user_id,
                 'viewer_id': viewer_id or discord_user_id,
                 'is_preview': bool(viewer_id and viewer_id != discord_user_id),
             }
-            public_state['current_night_step'] = self._serialize_night_step(
-                self._get_night_step_locked(self._game.active_night_step_id)
-            )
+            public_state['current_night_step'] = self._serialize_night_step(current_step)
+            public_state['viewer_grimoire'] = [
+                self._serialize_grimoire_entry_for_player(seated_player)
+                for seated_player in sorted(self._game.players.values(), key=lambda seated: seated.seat)
+            ] if self._viewer_can_see_grimoire_locked(player, current_step) else None
             return public_state
 
     def get_storyteller_state(self) -> dict[str, Any]:
@@ -1193,6 +1215,7 @@ class GameStore:
 
 
 store = GameStore()
+
 
 
 

@@ -18,6 +18,7 @@ type RoleReference = {
   group: string;
   description: string;
   icon_url: string;
+  statuses?: string[];
 };
 
 type ScriptReference = {
@@ -83,6 +84,7 @@ type PlayerState = {
     private_history: string[];
     night_action_prompt?: string | null;
     storyteller_message?: string | null;
+    status_markers?: string[];
     night_action_response?: string | null;
     night_action_submitted_at?: string | null;
   };
@@ -92,6 +94,16 @@ type PlayerState = {
     is_preview: boolean;
   };
   current_night_step?: NightStep | null;
+  viewer_grimoire?: Array<{
+    discord_user_id: string;
+    display_name: string;
+    seat: number;
+    is_alive: boolean;
+    role_name?: string | null;
+    alignment?: string | null;
+    status_markers?: string[];
+    reminders: string[];
+  }> | null;
 };
 
 type StorytellerState = {
@@ -124,6 +136,7 @@ export default function PlayerView({ auth }: Props) {
   const viewerRole = state?.viewer?.role_name ? roleMap.get(state.viewer.role_name) : undefined;
   const currentNightStep = state?.current_night_step ?? null;
   const activeTargetCount = currentNightStep?.input_type === 'player_select' ? (currentNightStep.target_count ?? 1) : 0;
+  const viewerGrimoire = state?.viewer_grimoire ?? null;
 
   const selectablePlayers = state?.players.filter((player) => {
     if (currentNightStep?.allow_self === false && player.discord_user_id === state?.viewer?.discord_user_id) {
@@ -338,6 +351,7 @@ export default function PlayerView({ auth }: Props) {
         <div className="card stack">
           <h3>Night Actions</h3>
           <p className="muted">Your active night prompt and any storyteller-delivered result will appear here.</p>
+          {viewerGrimoire ? <p><strong>Spy Info:</strong> The grimoire is visible until the storyteller advances past your night step.</p> : null}
           {isNight ? (
             isViewerTurn ? (
               <>
@@ -378,6 +392,33 @@ export default function PlayerView({ auth }: Props) {
             <p className="muted">The night-action panel becomes active when the storyteller moves the game to the night phase.</p>
           )}
         </div>
+
+        {viewerGrimoire ? (
+          <div className="card stack">
+            <h3>Visible Grimoire</h3>
+            <div className="seat-grid">
+              {viewerGrimoire.map((player) => {
+                const grimRole = player.role_name ? roleMap.get(player.role_name) : undefined;
+                return (
+                  <article key={player.discord_user_id} className={`seat ${player.is_alive ? '' : 'dead'}`}>
+                    <div className="role-heading">
+                      <RoleIcon iconUrl={grimRole?.icon_url} name={player.role_name ?? player.display_name} />
+                      <div>
+                        <strong>{player.display_name}</strong>
+                        <div>Seat {player.seat + 1}</div>
+                      </div>
+                    </div>
+                    <div>{player.role_name ?? 'Unknown Role'}</div>
+                    <div className="muted">{player.alignment ?? 'Unknown alignment'}</div>
+                    <div className="muted">{player.is_alive ? 'Alive' : 'Dead'}</div>
+                    <div className="muted">Markers: {(player.status_markers ?? []).length ? player.status_markers?.join(' · ') : 'None'}</div>
+                    <div className="muted">Reminders: {(player.reminders ?? []).length ? player.reminders.join(' · ') : 'None'}</div>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
 
         <div className="card">
           <h3>Private History</h3>
@@ -433,6 +474,7 @@ export default function PlayerView({ auth }: Props) {
     </section>
   );
 }
+
 
 
 
