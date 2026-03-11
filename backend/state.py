@@ -13,7 +13,7 @@ from psycopg import connect
 from psycopg.rows import dict_row
 
 from config import settings
-from content import build_night_prompt, get_game_status_options, get_role_night_template, get_script_reference, infer_alignment
+from content import build_night_prompt, get_game_status_options, get_role_night_template, get_script_reference, get_script_role_names, infer_alignment, is_demon_role
 
 
 UTC = timezone.utc
@@ -134,6 +134,7 @@ class GameRecord:
     night_count: int = 0
     night_steps: list[NightStep] = field(default_factory=list)
     active_night_step_id: str | None = None
+    demon_bluffs: list[str] = field(default_factory=list)
 
 
 class GameStore:
@@ -291,6 +292,7 @@ class GameStore:
                 'night_count': self._game.night_count,
                 'night_steps': [self._serialize_night_step_snapshot(step) for step in self._game.night_steps],
                 'active_night_step_id': self._game.active_night_step_id,
+                'demon_bluffs': self._game.demon_bluffs,
             },
             'sessions': {session_id: self._serialize_session(session) for session_id, session in self._sessions.items()},
             'oauth_states': self._oauth_states,
@@ -379,6 +381,7 @@ class GameStore:
                 for step_snapshot in night_steps_payload
             ],
             active_night_step_id=game_payload.get('active_night_step_id'),
+            demon_bluffs=list(game_payload.get('demon_bluffs', [])),
         )
 
         for player in self._game.players.values():
@@ -733,6 +736,52 @@ class GameStore:
                 if player.discord_user_id not in seated_ids
             ]
 
+    def list_available_demon_bluffs(self) -> list[str]:
+        with self._lock:
+            in_play_roles = {player.role_name for player in self._game.players.values() if player.role_name}
+            return [role_name for role_name in get_script_role_names(self._game.script) if role_name not in in_play_roles]
+
+    def seat_lobby_player(self, actor_id: str, lobby_player_id: str, seat: int) -> GamePlayer:
+        with self._lock:
+            lobby_player = self._lobby_players.get(lobby_player_id)
+            if not lobby_player:
+                raise KeyError('Lobby player not found.')
+            if lobby_player_id in self._game.players:
+                raise ValueError('That player is already seated in the current game.')
+            if any(player.seat == seat for player in self._game.players.values()):
+                raise ValueError('That seat is already occupied.')
+
+            player = GamePlayer(
+                discord_user_id=lobby_player.discord_user_id,
+                display_name=lobby_player.display_name,
+                seat=seat,
+            )
+            self._game.players[player.discord_user_id] = player
+            self._lobby_players.pop(player.discord_user_id, None)
+            self._game.log_entries.append(f'{actor_id} seated {player.display_name} in seat {seat + 1}.')
+            self._touch()
+            return player
+
+    def set_demon_bluffs(self, actor_id: str, bluffs: list[str]) -> list[str]:
+        with self._lock:
+            available = set(self.list_available_demon_bluffs())
+            cleaned: list[str] = []
+            seen: set[str] = set()
+            for bluff in bluffs:
+                name = str(bluff).strip()
+                if not name or name in seen:
+                    continue
+                if name not in available:
+                    raise ValueError(f'{name} is not an out-of-play role for this script.')
+                cleaned.append(name)
+                seen.add(name)
+            if len(cleaned) > 3:
+                raise ValueError('You can set at most 3 demon bluffs.')
+            self._game.demon_bluffs = cleaned
+            self._game.log_entries.append(f'{actor_id} updated demon bluffs.')
+            self._touch()
+            return list(self._game.demon_bluffs)
+
     def issue_oauth_state(self, next_path: str) -> str:
         with self._lock:
             state = secrets.token_urlsafe(24)
@@ -840,6 +889,7 @@ class GameStore:
                 storyteller_id=storyteller_id,
                 players=player_map,
                 log_entries=[f'Game created by storyteller {storyteller_id}.'],
+                demon_bluffs=[],
             )
             self._clear_night_state_locked(clear_storyteller_message=True)
             self._persist_locked()
@@ -1203,6 +1253,7 @@ class GameStore:
                 'is_preview': bool(viewer_id and viewer_id != discord_user_id),
             }
             public_state['current_night_step'] = self._serialize_night_step(current_step)
+            public_state['viewer_demon_bluffs'] = list(self._game.demon_bluffs) if is_demon_role(self._game.script, player.role_name) else []
             public_state['viewer_grimoire'] = [
                 self._serialize_grimoire_entry_for_player(seated_player)
                 for seated_player in sorted(self._game.players.values(), key=lambda seated: seated.seat)
@@ -1222,6 +1273,8 @@ class GameStore:
                 'phase': self._game.phase.value,
                 'storyteller_id': self._game.storyteller_id,
                 'available_statuses': available_statuses,
+                'available_demon_bluffs': self.list_available_demon_bluffs(),
+                'demon_bluffs': list(self._game.demon_bluffs),
                 'players': [self._serialize_player_storyteller(player) for player in players],
                 'lobby_players': [self._serialize_lobby_player(player) for player in lobby_players],
                 'current_nomination': self.serialize_nomination(),
@@ -1235,6 +1288,9 @@ class GameStore:
 
 
 store = GameStore()
+
+
+
 
 
 

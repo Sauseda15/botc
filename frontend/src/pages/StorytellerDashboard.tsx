@@ -93,6 +93,8 @@ type StorytellerState = {
   phase: string;
   storyteller_id?: string | null;
   available_statuses?: string[];
+  available_demon_bluffs?: string[];
+  demon_bluffs?: string[];
   players: PlayerRecord[];
   lobby_players: LobbyPlayer[];
   current_nomination?: {
@@ -179,6 +181,8 @@ export default function StorytellerDashboard({ auth }: Props) {
     healthy_target_id: '',
   });
   const [error, setError] = useState('');
+  const [liveSeatDraft, setLiveSeatDraft] = useState({ discord_user_id: '', seat: '0' });
+  const [demonBluffsDraft, setDemonBluffsDraft] = useState<string[]>(['', '', '']);
 
   const activeScript = useMemo(
     () => scripts.find((script) => script.id === scriptId) ?? scripts[0],
@@ -194,6 +198,9 @@ export default function StorytellerDashboard({ auth }: Props) {
   const canCreateGame = filledSeats === playerCount && assignedSeats === playerCount;
   const currentNightStep = state?.current_night_step ?? null;
   const availableStatuses = state?.available_statuses ?? ['Poisoned', 'Drunk', 'Dies at dawn'];
+  const availableDemonBluffs = state?.available_demon_bluffs ?? [];
+  const occupiedSeats = new Set((state?.players ?? []).map((player) => player.seat));
+  const emptySeats = Array.from({ length: playerCount }, (_, index) => index).filter((seat) => !occupiedSeats.has(seat));
 
   const load = () => {
     fetch(apiUrl('/api/game/storyteller'), { credentials: 'include' })
@@ -205,6 +212,7 @@ export default function StorytellerDashboard({ auth }: Props) {
       })
       .then((payload: StorytellerState) => {
         setState(payload);
+        setDemonBluffsDraft([payload.demon_bluffs?.[0] ?? '', payload.demon_bluffs?.[1] ?? '', payload.demon_bluffs?.[2] ?? '']);
         setError('');
       })
       .catch((err: Error) => setError(err.message));
@@ -271,6 +279,49 @@ export default function StorytellerDashboard({ auth }: Props) {
       setState(await response.json());
       setError('');
     }
+  };
+
+  const seatLobbyPlayer = async () => {
+    const response = await fetch(apiUrl('/api/game/storyteller/seat-lobby-player'), {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        discord_user_id: liveSeatDraft.discord_user_id,
+        seat: Number(liveSeatDraft.seat),
+      }),
+    });
+
+    if (response.ok) {
+      const payload = await response.json();
+      setState(payload);
+      setLiveSeatDraft({ discord_user_id: '', seat: (emptySeats[0] ?? 0).toString() });
+      setError('');
+      return;
+    }
+
+    const payload = await response.json().catch(() => ({}));
+    setError(payload.detail ?? 'Unable to seat lobby player.');
+  };
+
+  const saveDemonBluffs = async () => {
+    const response = await fetch(apiUrl('/api/game/storyteller/demon-bluffs'), {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bluffs: demonBluffsDraft.filter(Boolean) }),
+    });
+
+    if (response.ok) {
+      const payload = await response.json();
+      setState(payload);
+      setDemonBluffsDraft([payload.demon_bluffs?.[0] ?? '', payload.demon_bluffs?.[1] ?? '', payload.demon_bluffs?.[2] ?? '']);
+      setError('');
+      return;
+    }
+
+    const payload = await response.json().catch(() => ({}));
+    setError(payload.detail ?? 'Unable to save demon bluffs.');
   };
   const submitSetup = async () => {
     if (playersNeeded > 0) {
@@ -464,6 +515,51 @@ export default function StorytellerDashboard({ auth }: Props) {
           <div className="inline-form">
             <button className="secondary" onClick={fillTestPlayers}>Fill With Test Players</button>
             <button className="secondary" onClick={clearTestPlayers}>Clear Test Players</button>
+          </div>
+        </div>
+
+        <div className="card stack">
+          <h3>Live Seating</h3>
+          <p className="muted">Pull a logged-in lobby player into an empty seat without rebuilding the whole game.</p>
+          <div className="row">
+            <select value={liveSeatDraft.discord_user_id} onChange={(event) => setLiveSeatDraft({ ...liveSeatDraft, discord_user_id: event.target.value })}>
+              <option value="">Choose lobby player</option>
+              {lobbyPlayers.map((player) => (
+                <option key={player.discord_user_id} value={player.discord_user_id}>{player.display_name}</option>
+              ))}
+            </select>
+            <select value={liveSeatDraft.seat} onChange={(event) => setLiveSeatDraft({ ...liveSeatDraft, seat: event.target.value })}>
+              <option value="">Choose empty seat</option>
+              {emptySeats.map((seat) => (
+                <option key={seat} value={seat.toString()}>Seat {seat + 1}</option>
+              ))}
+            </select>
+          </div>
+          <div className="inline-form">
+            <button className="primary" onClick={seatLobbyPlayer} disabled={!liveSeatDraft.discord_user_id || !liveSeatDraft.seat || emptySeats.length === 0}>Seat Lobby Player</button>
+          </div>
+        </div>
+
+        <div className="card stack">
+          <h3>Demon Bluffs</h3>
+          <p className="muted">Pick up to 3 out-of-play roles to show the demon on their player page.</p>
+          <div className="row">
+            {[0, 1, 2].map((index) => (
+              <select key={index} value={demonBluffsDraft[index] ?? ''} onChange={(event) => {
+                const next = [...demonBluffsDraft];
+                next[index] = event.target.value;
+                setDemonBluffsDraft(next);
+              }}>
+                <option value="">No bluff</option>
+                {availableDemonBluffs.map((roleName) => (
+                  <option key={`${index}-${roleName}`} value={roleName}>{roleName}</option>
+                ))}
+              </select>
+            ))}
+          </div>
+          <div className="muted">Current bluffs: {(state?.demon_bluffs ?? []).length ? state?.demon_bluffs?.join(' · ') : 'None set'}</div>
+          <div className="inline-form">
+            <button className="primary" onClick={saveDemonBluffs}>Save Demon Bluffs</button>
           </div>
         </div>
 
@@ -707,6 +803,9 @@ export default function StorytellerDashboard({ auth }: Props) {
     </section>
   );
 }
+
+
+
 
 
 

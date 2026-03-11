@@ -79,6 +79,15 @@ class TestPlayersRequest(BaseModel):
     target_count: int = Field(ge=0, le=20)
 
 
+class SeatLobbyPlayerRequest(BaseModel):
+    discord_user_id: str
+    seat: int = Field(ge=0)
+
+
+class DemonBluffsRequest(BaseModel):
+    bluffs: list[str] = Field(default_factory=list)
+
+
 class NightAdvanceRequest(BaseModel):
     resolution_note: str | None = None
     death_target_ids: list[str] = Field(default_factory=list)
@@ -154,6 +163,23 @@ async def clear_test_players(session: WebSession = Depends(require_storyteller))
     store.clear_test_players()
     return store.get_storyteller_state()
 
+
+@router.post('/storyteller/seat-lobby-player')
+async def seat_lobby_player(payload: SeatLobbyPlayerRequest, session: WebSession = Depends(require_storyteller)):
+    try:
+        store.seat_lobby_player(session.discord_user_id, payload.discord_user_id, payload.seat)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return store.get_storyteller_state()
+
+
+@router.post('/storyteller/demon-bluffs')
+async def set_demon_bluffs(payload: DemonBluffsRequest, session: WebSession = Depends(require_storyteller)):
+    try:
+        store.set_demon_bluffs(session.discord_user_id, payload.bluffs)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return store.get_storyteller_state()
 
 @router.post('/storyteller/phase')
 async def update_phase(payload: PhaseUpdateRequest, session: WebSession = Depends(require_storyteller)):
@@ -274,6 +300,8 @@ async def signal_night_ready(payload: NightReadyRequest, session: WebSession = D
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return store.get_player_state(target_player_id, viewer_id=session.discord_user_id)
+
+
 
 
 

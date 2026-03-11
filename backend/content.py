@@ -327,6 +327,33 @@ def get_game_status_options(role_names: list[str | None]) -> list[str]:
         statuses.update(get_role_statuses(role_name))
     return sorted(statuses)
 
+
+def get_role_group(script_id: str, role_name: str | None) -> str | None:
+    if not role_name:
+        return None
+    script = SCRIPT_DEFINITIONS.get(script_id)
+    if not script:
+        return None
+    for group, names in script['roles'].items():
+        if role_name in names:
+            return group
+    return None
+
+
+def is_demon_role(script_id: str, role_name: str | None) -> bool:
+    return get_role_group(script_id, role_name) == 'demons'
+
+
+def get_script_role_names(script_id: str) -> list[str]:
+    script = SCRIPT_DEFINITIONS.get(script_id)
+    if not script:
+        return []
+    names: list[str] = []
+    for group_names in script['roles'].values():
+        names.extend(group_names)
+    return names
+
+
 def build_night_prompt(script_id: str, role_name: str | None, alignment: str | None, reminders: list[str] | None = None) -> str | None:
     if not role_name:
         return None
@@ -357,6 +384,7 @@ def build_night_prompt(script_id: str, role_name: str | None, alignment: str | N
             action_note,
         ]
     )
+
 
 
 

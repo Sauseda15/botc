@@ -104,6 +104,7 @@ type PlayerState = {
     status_markers?: string[];
     reminders: string[];
   }> | null;
+  viewer_demon_bluffs?: string[];
 };
 
 type StorytellerState = {
@@ -148,6 +149,7 @@ export default function PlayerView({ auth }: Props) {
   const currentNightStep = state?.current_night_step ?? null;
   const activeTargetCount = currentNightStep?.input_type === 'player_select' ? (currentNightStep.target_count ?? 1) : 0;
   const viewerGrimoire = state?.viewer_grimoire ?? null;
+  const viewerDemonBluffs = state?.viewer_demon_bluffs ?? [];
 
   const selectablePlayers = state?.players.filter((player) => {
     if (currentNightStep?.allow_self === false && player.discord_user_id === state?.viewer?.discord_user_id) {
@@ -456,6 +458,30 @@ export default function PlayerView({ auth }: Props) {
             <p className="muted">The night-action panel becomes active when the storyteller moves the game to the night phase.</p>
           )}
         </div>
+
+        {viewerDemonBluffs.length > 0 ? (
+          <div className="card stack">
+            <h3>Demon Bluffs</h3>
+            <p className="muted">These are the storyteller-provided out-of-play roles you can bluff as.</p>
+            <div className="role-reference-grid compact">
+              {viewerDemonBluffs.map((roleName) => {
+                const bluffRole = roleMap.get(roleName);
+                return (
+                  <article key={roleName} className="role-reference-card compact">
+                    <div className="role-heading">
+                      <RoleIcon iconUrl={bluffRole?.icon_url} name={roleName} />
+                      <div>
+                        <strong>{roleName}</strong>
+                        <div className="muted">{bluffRole?.group ?? 'Role'} · {bluffRole?.alignment ?? 'Unknown'}</div>
+                      </div>
+                    </div>
+                    {bluffRole?.description ? <p className="muted">{bluffRole.description}</p> : null}
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
 
         {viewerGrimoire ? (
           <div className="card stack">
