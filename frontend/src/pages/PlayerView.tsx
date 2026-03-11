@@ -496,7 +496,7 @@ export default function PlayerView({ auth }: Props) {
                   <RoleIcon iconUrl={role.icon_url} name={role.name} />
                   <div>
                     <strong>{role.name}</strong>
-                    <div className="muted">{role.group} · {role.alignment}</div>
+                    <div className="muted">{role.group.charAt(0).toUpperCase() + role.group.slice(1)} · {role.alignment}</div>
                   </div>
                 </div>
                 <p className="muted">{role.description}</p>

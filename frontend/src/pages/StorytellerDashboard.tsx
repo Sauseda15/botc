@@ -509,7 +509,7 @@ export default function StorytellerDashboard({ auth }: Props) {
                     <RoleIcon iconUrl={role.icon_url} name={role.name} />
                     <span>{role.name}</span>
                   </span>
-                  <small>{role.group} · {role.alignment}</small>
+                  <small>{role.group.charAt(0).toUpperCase() + role.group.slice(1)} · {role.alignment}</small>
                   {role.statuses?.length ? <small>Statuses: {role.statuses.join(' · ')}</small> : null}
                 </button>
               ))}
