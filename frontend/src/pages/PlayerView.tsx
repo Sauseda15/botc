@@ -17,6 +17,18 @@ type PlayerRecord = {
   display_name: string;
 };
 
+type PublicState = {
+  name: string;
+  script: string;
+  phase: string;
+  players: Array<{
+    discord_user_id: string;
+    display_name: string;
+    seat: number;
+    is_alive: boolean;
+  }>;
+};
+
 type PlayerState = {
   name: string;
   script: string;
@@ -60,6 +72,7 @@ type Props = {
 
 export default function PlayerView({ auth }: Props) {
   const [state, setState] = useState<PlayerState | null>(null);
+  const [publicState, setPublicState] = useState<PublicState | null>(null);
   const [error, setError] = useState<string>('');
   const [nightAction, setNightAction] = useState('');
   const [storytellerPlayers, setStorytellerPlayers] = useState<PlayerRecord[]>([]);
@@ -67,6 +80,13 @@ export default function PlayerView({ auth }: Props) {
 
   const isStoryteller = Boolean(auth.user?.is_storyteller);
   const ownPlayerId = auth.user?.is_player ? auth.user.discord_user_id : '';
+
+  const loadPublicState = () => {
+    fetch(apiUrl('/api/game/public'), { credentials: 'include' })
+      .then((response) => response.json())
+      .then((payload: PublicState) => setPublicState(payload))
+      .catch(() => setPublicState(null));
+  };
 
   const load = (targetPlayerId?: string) => {
     const requestedId = targetPlayerId ?? selectedPlayerId ?? ownPlayerId;
@@ -110,6 +130,8 @@ export default function PlayerView({ auth }: Props) {
       return;
     }
 
+    loadPublicState();
+
     if (ownPlayerId) {
       setSelectedPlayerId(ownPlayerId);
       load(ownPlayerId);
@@ -125,7 +147,11 @@ export default function PlayerView({ auth }: Props) {
 
     if (isStoryteller) {
       setError('No seated players are available to preview yet.');
+      return;
     }
+
+    setState(null);
+    setError('');
   }, [auth.authenticated, ownPlayerId, isStoryteller, storytellerPlayers.length]);
 
   const castVote = async (approve: boolean) => {
@@ -163,6 +189,40 @@ export default function PlayerView({ auth }: Props) {
 
   if (!auth.authenticated) {
     return <section className="panel"><p>Log in with Discord to see your player view.</p></section>;
+  }
+
+  if (!ownPlayerId && !isStoryteller) {
+    return (
+      <section className="panel split">
+        <div className="stack">
+          <div className="card">
+            <h2>Waiting Room</h2>
+            <p><strong>{auth.user?.username}</strong>, you are checked in and visible to the storyteller.</p>
+            <p className="muted">You will unlock your player sheet automatically once the storyteller seats you in the current game.</p>
+          </div>
+
+          <div className="card">
+            <h3>Current Table Status</h3>
+            <p><strong>Game:</strong> {publicState?.name ?? 'Blood on the Clocktower'}</p>
+            <p><strong>Phase:</strong> {publicState?.phase ?? 'setup'}</p>
+            <p><strong>Seated Players:</strong> {publicState?.players?.length ?? 0}</p>
+          </div>
+        </div>
+
+        <div className="card">
+          <h3>Who Is Already Seated</h3>
+          <div className="seat-grid">
+            {(publicState?.players ?? []).map((player) => (
+              <article key={player.discord_user_id} className={`seat ${player.is_alive ? '' : 'dead'}`}>
+                <strong>Seat {player.seat + 1}</strong>
+                <div>{player.display_name}</div>
+                <div className="muted">{player.is_alive ? 'Alive' : 'Dead'}</div>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+    );
   }
 
   const isPreview = Boolean(state?.viewer_context?.is_preview);

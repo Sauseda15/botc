@@ -137,6 +137,10 @@ export default function StorytellerDashboard({ auth }: Props) {
 
   const seatOptions = useMemo(() => state?.players ?? [], [state]);
   const lobbyPlayers = state?.lobby_players ?? [];
+  const filledSeats = setupSeats.filter((seat) => seat.discord_user_id && seat.display_name).length;
+  const assignedSeats = setupSeats.filter((seat) => seat.role_name).length;
+  const playersNeeded = Math.max(playerCount - filledSeats, 0);
+  const canCreateGame = filledSeats === playerCount && assignedSeats === playerCount;
 
   const load = () => {
     fetch(apiUrl('/api/game/storyteller'), { credentials: 'include' })
@@ -182,13 +186,17 @@ export default function StorytellerDashboard({ auth }: Props) {
   };
 
   const assignRoleToSeat = (role: RoleOption) => {
+    if (!setupSeats[selectedSeat]?.discord_user_id) {
+      setError('Pick a seat with a logged-in player before assigning a token.');
+      return;
+    }
     updateSeat(selectedSeat, { role_name: role.name, alignment: role.alignment });
+    setError('');
   };
 
   const submitSetup = async () => {
-    const emptySeats = setupSeats.filter((seat) => !seat.discord_user_id || !seat.display_name);
-    if (emptySeats.length > 0) {
-      setError('Wait for every player to log in with Discord so the storyteller lobby can fill all selected seats.');
+    if (playersNeeded > 0) {
+      setError(`You need ${playersNeeded} more logged-in player${playersNeeded === 1 ? '' : 's'} before starting this game.`);
       return;
     }
 
@@ -311,6 +319,18 @@ export default function StorytellerDashboard({ auth }: Props) {
         </div>
 
         <div className="card stack">
+          <h3>Lobby Readiness</h3>
+          <p><strong>{filledSeats}</strong> of <strong>{playerCount}</strong> players are checked in.</p>
+          <p className="muted">
+            {playersNeeded > 0
+              ? `Waiting on ${playersNeeded} more player${playersNeeded === 1 ? '' : 's'} before you can start this table.`
+              : assignedSeats < playerCount
+                ? `Everyone is here. Assign ${playerCount - assignedSeats} more token${playerCount - assignedSeats === 1 ? '' : 's'} to start.`
+                : 'Lobby is ready. You can create the game now.'}
+          </p>
+        </div>
+
+        <div className="card stack">
           <h3>Logged-in Lobby</h3>
           <p className="muted">Anyone who signs in with Discord and is not the storyteller shows up here automatically.</p>
           <div className="seat-grid">
@@ -371,7 +391,7 @@ export default function StorytellerDashboard({ auth }: Props) {
         </div>
 
         <div className="inline-form">
-          <button className="primary" onClick={submitSetup}>Create Game From Lobby</button>
+          <button className="primary" onClick={submitSetup} disabled={!canCreateGame}>Create Game From Lobby</button>
           <button className="secondary" onClick={load}>Refresh Live State</button>
         </div>
       </div>
