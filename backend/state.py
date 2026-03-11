@@ -639,9 +639,22 @@ class GameStore:
         self._activate_next_night_step_locked()
         return step
 
+    def _release_players_to_lobby_locked(self) -> None:
+        for player in sorted(self._game.players.values(), key=lambda item: item.seat):
+            self._lobby_players[player.discord_user_id] = LobbyPlayer(
+                discord_user_id=player.discord_user_id,
+                display_name=player.display_name,
+                joined_at=utcnow(),
+            )
+
+    def _clear_game_locked(self) -> None:
+        storyteller_id = self._game.storyteller_id
+        self._release_players_to_lobby_locked()
+        self._game = GameRecord(storyteller_id=storyteller_id)
+
     def reset_game(self) -> None:
         with self._lock:
-            self._game = GameRecord()
+            self._clear_game_locked()
             self._persist_locked()
 
     def current_game(self) -> GameRecord:
@@ -911,6 +924,12 @@ class GameStore:
 
     def set_phase(self, actor_id: str, phase: GamePhase) -> GameRecord:
         with self._lock:
+            if phase == GamePhase.FINISHED:
+                self._game.log_entries.append(f'{actor_id} finished the game.')
+                self._clear_game_locked()
+                self._persist_locked()
+                return self._game
+
             self._game.phase = phase
             if phase == GamePhase.NIGHT:
                 self._game.night_count += 1
@@ -1380,6 +1399,7 @@ class GameStore:
 
 
 store = GameStore()
+
 
 
 
