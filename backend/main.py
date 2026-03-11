@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from api import game as game_router
 from auth import router as auth_router
@@ -32,6 +35,13 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(game_router.router)
+
+FRONTEND_DIST = Path(__file__).resolve().parent.parent / 'frontend' / 'dist'
+FRONTEND_INDEX = FRONTEND_DIST / 'index.html'
+ASSETS_DIR = FRONTEND_DIST / 'assets'
+
+if ASSETS_DIR.exists():
+    app.mount('/assets', StaticFiles(directory=ASSETS_DIR), name='frontend-assets')
 
 bot_task: asyncio.Task | None = None
 bot_instance = None
@@ -65,7 +75,21 @@ async def shutdown_event() -> None:
 
 
 @app.get('/')
-async def root() -> dict[str, str]:
+async def root():
+    if FRONTEND_INDEX.exists():
+        return FileResponse(FRONTEND_INDEX)
+    return {'message': 'BOTC backend is running'}
+
+
+@app.get('/{full_path:path}')
+async def spa_fallback(full_path: str):
+    if full_path.startswith('api'):
+        return {'detail': 'Not found'}
+    candidate = FRONTEND_DIST / full_path
+    if candidate.exists() and candidate.is_file():
+        return FileResponse(candidate)
+    if FRONTEND_INDEX.exists():
+        return FileResponse(FRONTEND_INDEX)
     return {'message': 'BOTC backend is running'}
 
 
