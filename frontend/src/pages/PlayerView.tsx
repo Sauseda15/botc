@@ -141,6 +141,8 @@ export default function PlayerView({ auth }: Props) {
   const [selectedTargets, setSelectedTargets] = useState<string[]>([]);
   const [storytellerPlayers, setStorytellerPlayers] = useState<PlayerRecord[]>([]);
   const [selectedPlayerId, setSelectedPlayerId] = useState('');
+  const draftDirtyRef = useRef(false);
+  const lastStepIdRef = useRef<string | null>(null);
 
   const isStoryteller = Boolean(auth.user?.is_storyteller);
   const ownPlayerId = auth.user?.discord_user_id ?? '';
@@ -178,14 +180,28 @@ export default function PlayerView({ auth }: Props) {
         return response.json();
       })
       .then((payload: PlayerState) => {
+        const incomingStepId = payload.current_night_step?.step_id ?? null;
+        const incomingResponse = payload.viewer?.night_action_response ?? '';
+        const shouldSyncDraft =
+          incomingStepId !== lastStepIdRef.current ||
+          !draftDirtyRef.current ||
+          Boolean(incomingResponse) ||
+          payload.current_night_step?.status === 'awaiting_approval' ||
+          payload.current_night_step?.status === 'complete' ||
+          payload.current_night_step?.player_id !== payload.viewer?.discord_user_id;
+
         setState(payload);
-        setNightAction(payload.viewer?.night_action_response ?? '');
-        setSelectedTargets(
-          (payload.viewer?.night_action_response ?? '')
-            .split(',')
-            .map((value) => value.trim())
-            .filter(Boolean)
-        );
+        if (shouldSyncDraft) {
+          setNightAction(incomingResponse);
+          setSelectedTargets(
+            incomingResponse
+              .split(',')
+              .map((value) => value.trim())
+              .filter(Boolean)
+          );
+          draftDirtyRef.current = false;
+        }
+        lastStepIdRef.current = incomingStepId;
         setSelectedPlayerId(payload.viewer?.discord_user_id ?? requestedId ?? '');
         setError('');
       })
@@ -275,6 +291,7 @@ export default function PlayerView({ auth }: Props) {
   };
 
   const updateSelectedTarget = (index: number, value: string) => {
+    draftDirtyRef.current = true;
     setSelectedTargets((current) => {
       const next = Array.from({ length: activeTargetCount }, (_, targetIndex) => current[targetIndex] ?? '');
       next[index] = value;
@@ -300,6 +317,7 @@ export default function PlayerView({ auth }: Props) {
     if (response.ok) {
       const payload = await response.json();
       setState(payload);
+      draftDirtyRef.current = false;
       setError('');
       return;
     }
@@ -429,7 +447,7 @@ export default function PlayerView({ auth }: Props) {
                     ))}
                   </div>
                 ) : (
-                  <textarea value={nightAction} onChange={(event) => setNightAction(event.target.value)} placeholder="Enter your night action or question" disabled={!(canSubmitNightAction || canPreviewSubmit)} />
+                  <textarea value={nightAction} onChange={(event) => { draftDirtyRef.current = true; setNightAction(event.target.value); }} placeholder="Enter your night action or question" disabled={!(canSubmitNightAction || canPreviewSubmit)} />
                 )}
                 <div className="inline-form">
                   <button className="primary" onClick={submitNightAction} disabled={(!(canSubmitNightAction || canPreviewSubmit)) || !hasAllTargets}>
@@ -561,6 +579,7 @@ export default function PlayerView({ auth }: Props) {
     </section>
   );
 }
+
 
 
 
