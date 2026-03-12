@@ -454,6 +454,11 @@ export default function PlayerView({ auth }: Props) {
   const liveYesVotes = voteLedger.filter((entry) => entry.status === 'yes').length;
   const liveNoVotes = voteLedger.filter((entry) => entry.status === 'no').length;
   const livePendingVotes = voteLedger.filter((entry) => entry.status === 'pending').length;
+  const scriptGroups = ['townsfolk', 'outsider', 'minion', 'demon'] as const;
+  const groupedScriptRoles = scriptGroups.map((group) => ({
+    group,
+    roles: (state?.script_reference?.roles ?? []).filter((role) => role.group === group),
+  })).filter((section) => section.roles.length > 0);
 
   return (
     <section className="panel split">
@@ -646,18 +651,25 @@ export default function PlayerView({ auth }: Props) {
 
         <div className="card stack">
           <h3>Script Sheet</h3>
-          <div className="role-reference-grid">
-            {(state?.script_reference?.roles ?? []).map((role) => (
-              <article key={role.name} className="role-reference-card">
-                <div className="role-heading">
-                  <RoleIcon iconUrl={role.icon_url} name={role.name} />
-                  <div>
-                    <strong>{role.name}</strong>
-                    <div className="muted">{role.group.charAt(0).toUpperCase() + role.group.slice(1)} · {role.alignment}</div>
-                  </div>
+          <div className="stack">
+            {groupedScriptRoles.map((section) => (
+              <section key={section.group} className="stack script-section">
+                <h4>{section.group.charAt(0).toUpperCase() + section.group.slice(1)}s</h4>
+                <div className="role-reference-grid">
+                  {section.roles.map((role) => (
+                    <article key={role.name} className="role-reference-card">
+                      <div className="role-heading">
+                        <RoleIcon iconUrl={role.icon_url} name={role.name} />
+                        <div>
+                          <strong>{role.name}</strong>
+                          <div className="muted">{role.group.charAt(0).toUpperCase() + role.group.slice(1)} · {role.alignment}</div>
+                        </div>
+                      </div>
+                      <p className="muted">{role.description}</p>
+                    </article>
+                  ))}
                 </div>
-                <p className="muted">{role.description}</p>
-              </article>
+              </section>
             ))}
           </div>
         </div>
@@ -700,6 +712,7 @@ export default function PlayerView({ auth }: Props) {
     </section>
   );
 }
+
 
 
 
