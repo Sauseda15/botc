@@ -610,7 +610,7 @@ export default function StorytellerDashboard({ auth }: Props) {
                     {seat.display_name ? (
                       <>
                         <strong>{seat.display_name}</strong>
-                        <div className="muted">{seat.discord_user_id}</div>
+                        <div className="muted">Checked in · Seat {seat.seat + 1}</div>
                       </>
                     ) : (
                       <div className="muted">Waiting for a player login</div>
@@ -834,6 +834,7 @@ export default function StorytellerDashboard({ auth }: Props) {
     </section>
   );
 }
+
 
 
 

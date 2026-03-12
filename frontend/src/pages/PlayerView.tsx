@@ -674,6 +674,7 @@ export default function PlayerView({ auth }: Props) {
               ) : (
                   <p className="muted">Voting round complete. Waiting for storyteller to resolve the nomination.</p>
               )}
+              <p className="muted">Votes cast: {Object.keys(nominationState.votes).length} of {nominationState.vote_order.length}</p>
               <p className="muted">Live tally: {liveYesVotes} yes · {liveNoVotes} no · {livePendingVotes} pending</p>
               <ol className="log-list">
                 {voteLedger.map((entry) => (
