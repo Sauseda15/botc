@@ -126,7 +126,7 @@ export default function TownSquare() {
           {nominationState ? (
             <div className="stack">
               <span>Nominator: {nominatorName}</span>
-              <span>Nominee: {nomineeName}</span>
+              <span>Nominated For Execution: {nomineeName}</span>
               {nominationState.resolved_at ? (
                 <span>Vote locked: {nominationState.result_vote_count} yes vote(s)</span>
               ) : (

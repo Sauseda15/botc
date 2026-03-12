@@ -683,7 +683,7 @@ export default function PlayerView({ auth }: Props) {
           <h3>Voting</h3>
           {nominationState ? (
             <>
-              <p><strong>Nominator:</strong> {nominatorName ?? 'Unknown'}<br /><strong>Nominee:</strong> {nomineeName ?? 'Unknown'}</p>
+              <p><strong>Nominator:</strong> {nominatorName ?? 'Unknown'}<br /><strong>Nominated for Execution:</strong> {nomineeName ?? 'Unknown'}</p>
               {nominationState.resolved_at ? (
                 <p className="muted">Vote locked: {nominationState.result_vote_count} yes vote(s). {nominationState.result_vote_count >= nominationState.required_votes ? 'The nomination reached the execution threshold.' : 'The nomination failed to reach the execution threshold.'}</p>
               ) : votingRoundActive ? (
