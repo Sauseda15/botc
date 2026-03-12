@@ -458,6 +458,19 @@ class GameStore:
         self._game.updated_at = utcnow()
         self._persist_locked()
 
+    def _display_name_for_user_locked(self, discord_user_id: str | None) -> str:
+        if not discord_user_id:
+            return 'Unknown'
+        player = self._game.players.get(discord_user_id)
+        if player:
+            return player.display_name
+        lobby_player = self._lobby_players.get(discord_user_id)
+        if lobby_player:
+            return lobby_player.display_name
+        for session in self._sessions.values():
+            if session.discord_user_id == discord_user_id:
+                return session.username
+        return discord_user_id
     def _clear_night_state_locked(self, clear_storyteller_message: bool = False) -> None:
         self._game.night_steps = []
         self._game.active_night_step_id = None
@@ -696,7 +709,8 @@ class GameStore:
         with self._lock:
             self._game.storyteller_id = discord_user_id
             self._lobby_players.pop(discord_user_id, None)
-            self._game.log_entries.append(f'{discord_user_id} claimed storyteller access.')
+            storyteller_name = self._display_name_for_user_locked(discord_user_id)
+            self._game.log_entries.append(f'{storyteller_name} claimed storyteller access.')
             self._touch()
 
     def get_player(self, discord_user_id: str) -> GamePlayer | None:
@@ -944,7 +958,7 @@ class GameStore:
                 phase=GamePhase.SETUP,
                 storyteller_id=storyteller_id,
                 players=player_map,
-                log_entries=[f'Game created by storyteller {storyteller_id}.'],
+                log_entries=[f'Game created by storyteller {self._display_name_for_user_locked(storyteller_id)}.'],
                 demon_bluffs=cleaned_bluffs,
             )
             self._clear_night_state_locked(clear_storyteller_message=True)
@@ -1057,7 +1071,8 @@ class GameStore:
             self._game.nominees_today.append(nominee_id)
             nominator_name = self._game.players[nominator_id].display_name
             nominee_name = self._game.players[nominee_id].display_name
-            self._game.log_entries.append(f'{actor_id} opened a nomination: {nominator_name} -> {nominee_name}.')
+            actor_name = self._display_name_for_user_locked(actor_id)
+            self._game.log_entries.append(f'{actor_name} opened a nomination: {nominator_name} -> {nominee_name}.')
             self._touch()
             return nomination
 
@@ -1541,6 +1556,8 @@ class GameStore:
 
 
 store = GameStore()
+
+
 
 
 
