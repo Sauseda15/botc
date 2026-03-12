@@ -22,6 +22,7 @@ TEST_PLAYER_PREFIX = 'test-player-'
 STATUS_POISONED = 'Poisoned'
 STATUS_DRUNK = 'Drunk'
 STATUS_DIES_AT_DAWN = 'Dies at dawn'
+STATUS_PROTECTED = 'Protected'
 VOTE_WINDOW_SECONDS = 10
 
 
@@ -526,6 +527,12 @@ class GameStore:
                 step.completed_at = None
                 step.resolution_note = None
 
+    def _player_is_protected_locked(self, player: GamePlayer) -> bool:
+        return STATUS_PROTECTED in set(player.status_markers)
+
+    def _player_action_is_disabled_locked(self, player: GamePlayer) -> bool:
+        return player.is_poisoned or player.is_drunk
+
     def _find_imp_successor_locked(self, *, allow_any_minion: bool, exclude_ids: set[str] | None = None) -> GamePlayer | None:
         excluded = exclude_ids or set()
         eligible_minions = [
@@ -599,55 +606,64 @@ class GameStore:
         healthy_target_ids: list[str],
     ) -> list[str]:
         summary: list[str] = []
+        acting_player = self._game.players.get(step.player_id)
+        action_disabled = bool(acting_player and self._player_action_is_disabled_locked(acting_player))
+
         if resolution_note:
-            player = self._game.players.get(step.player_id)
-            if player:
-                player.storyteller_message = resolution_note
-                self._append_private_history_once_locked(player, f'Storyteller: {resolution_note}')
+            if acting_player:
+                acting_player.storyteller_message = resolution_note
+                self._append_private_history_once_locked(acting_player, f'Storyteller: {resolution_note}')
             summary.append(f'info given: {resolution_note}')
 
-        for player_id in death_target_ids:
-            target = self._game.players.get(player_id)
-            if not target:
-                continue
-            self._set_status_marker_locked(target, STATUS_DIES_AT_DAWN, True)
-            self._skip_future_steps_for_player_locked(player_id, 'Skipped because this player will die at dawn.')
-            summary.append(f'dies at dawn: {target.display_name}')
+        if action_disabled and acting_player:
+            disabled_reason = 'poisoned' if acting_player.is_poisoned else 'drunk'
+            summary.append(f'{acting_player.display_name} was {disabled_reason}, so their action had no effect.')
+        else:
+            for player_id in death_target_ids:
+                target = self._game.players.get(player_id)
+                if not target:
+                    continue
+                if self._player_is_protected_locked(target):
+                    summary.append(f'protected from death: {target.display_name}')
+                    continue
+                self._set_status_marker_locked(target, STATUS_DIES_AT_DAWN, True)
+                self._skip_future_steps_for_player_locked(player_id, 'Skipped because this player will die at dawn.')
+                summary.append(f'dies at dawn: {target.display_name}')
 
-        if step.role_name == 'Imp' and step.player_id in death_target_ids:
-            successor = self._find_imp_successor_locked(allow_any_minion=True, exclude_ids={step.player_id})
-            if successor:
-                reason = 'Scarlet Woman inherited the Imp' if successor.role_name == 'Scarlet Woman' else 'A living minion inherited the Imp'
-                self._promote_player_to_imp_locked(successor, reason)
-                summary.append(f'new Imp: {successor.display_name}')
+            if step.role_name == 'Imp' and step.player_id in death_target_ids:
+                successor = self._find_imp_successor_locked(allow_any_minion=True, exclude_ids={step.player_id})
+                if successor:
+                    reason = 'Scarlet Woman inherited the Imp' if successor.role_name == 'Scarlet Woman' else 'A living minion inherited the Imp'
+                    self._promote_player_to_imp_locked(successor, reason)
+                    summary.append(f'new Imp: {successor.display_name}')
 
-        for player_id in poison_target_ids:
-            target = self._game.players.get(player_id)
-            if not target:
-                continue
-            self._set_status_marker_locked(target, STATUS_POISONED, True)
-            summary.append(f'poisoned: {target.display_name}')
+            for player_id in poison_target_ids:
+                target = self._game.players.get(player_id)
+                if not target:
+                    continue
+                self._set_status_marker_locked(target, STATUS_POISONED, True)
+                summary.append(f'poisoned: {target.display_name}')
 
-        for player_id in drunk_target_ids:
-            target = self._game.players.get(player_id)
-            if not target:
-                continue
-            self._set_status_marker_locked(target, STATUS_DRUNK, True)
-            summary.append(f'drunk: {target.display_name}')
+            for player_id in drunk_target_ids:
+                target = self._game.players.get(player_id)
+                if not target:
+                    continue
+                self._set_status_marker_locked(target, STATUS_DRUNK, True)
+                summary.append(f'drunk: {target.display_name}')
 
-        for player_id in sober_target_ids:
-            target = self._game.players.get(player_id)
-            if not target:
-                continue
-            self._set_status_marker_locked(target, STATUS_DRUNK, False)
-            summary.append(f'sober: {target.display_name}')
+            for player_id in sober_target_ids:
+                target = self._game.players.get(player_id)
+                if not target:
+                    continue
+                self._set_status_marker_locked(target, STATUS_DRUNK, False)
+                summary.append(f'sober: {target.display_name}')
 
-        for player_id in healthy_target_ids:
-            target = self._game.players.get(player_id)
-            if not target:
-                continue
-            self._set_status_marker_locked(target, STATUS_POISONED, False)
-            summary.append(f'healthy: {target.display_name}')
+            for player_id in healthy_target_ids:
+                target = self._game.players.get(player_id)
+                if not target:
+                    continue
+                self._set_status_marker_locked(target, STATUS_POISONED, False)
+                summary.append(f'healthy: {target.display_name}')
 
         if not summary:
             summary.append('no storyteller updates recorded')
@@ -1621,6 +1637,7 @@ class GameStore:
 
 
 store = GameStore()
+
 
 
 
