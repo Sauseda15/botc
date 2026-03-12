@@ -185,18 +185,25 @@ export default function PlayerView({ auth }: Props) {
   const executionCandidateVotes = state?.execution_candidate_votes ?? publicState?.execution_candidate_votes ?? 0;
   const playerNameById = new Map((state?.players ?? publicState?.players ?? []).map((player) => [player.discord_user_id, player.display_name]));
   const pollIntervalMs = nominationState && !nominationState.resolved_at ? 1000 : 4000;
+
   const liveElapsedSeconds = nominationState && !nominationState.resolved_at
     ? Math.max(0, Math.floor((nowMs - new Date(nominationState.opened_at).getTime()) / 1000))
     : 0;
+
+  const voteWindow = 10; // seconds per vote
+
+
   const liveSecondsRemaining = nominationState && !nominationState.resolved_at
-    ? Math.max(0, 10 - (liveElapsedSeconds % 10))
+    ? voteWindow - (liveElapsedSeconds % voteWindow)
     : nominationState?.seconds_remaining ?? 0;
+
   const liveVoteIndex = nominationState && !nominationState.resolved_at
-    ? Math.floor(liveElapsedSeconds / 10)
+    ? Math.floor(liveElapsedSeconds / voteWindow)
     : -1;
-  const liveCurrentVoterId = nominationState && !nominationState.resolved_at
-    ? (nominationState.vote_order[Math.min(liveVoteIndex, Math.max(nominationState.vote_order.length - 1, 0))] ?? null)
-    : null;
+
+  const liveCurrentVoterId = nominationState && !nominationState.resolved_at && liveVoteIndex >= 0 && liveVoteIndex < nominationState.vote_order.length
+    ? nominationState.vote_order[liveVoteIndex]
+    : null; // This is the ID of the player currently expected to vote, or null if we're in between votes or the vote order isn't available
 
   const selectablePlayers = state?.players.filter((player) => {
     if (currentNightStep?.allow_self === false && player.discord_user_id === state?.viewer?.discord_user_id) {
