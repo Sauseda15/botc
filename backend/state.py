@@ -528,7 +528,9 @@ class GameStore:
                 step.resolution_note = None
 
     def _player_is_protected_locked(self, player: GamePlayer) -> bool:
-        return STATUS_PROTECTED in set(player.status_markers)
+        marker_protected = STATUS_PROTECTED in set(player.status_markers)
+        innate_soldier_protection = player.role_name == 'Soldier' and not player.is_poisoned and not player.is_drunk
+        return marker_protected or innate_soldier_protection
 
     def _player_action_is_disabled_locked(self, player: GamePlayer) -> bool:
         return player.is_poisoned or player.is_drunk
@@ -1637,6 +1639,7 @@ class GameStore:
 
 
 store = GameStore()
+
 
 
 
