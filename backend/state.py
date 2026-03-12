@@ -23,6 +23,7 @@ STATUS_POISONED = 'Poisoned'
 STATUS_DRUNK = 'Drunk'
 STATUS_DIES_AT_DAWN = 'Dies at dawn'
 STATUS_PROTECTED = 'Protected'
+TEMPORARY_NIGHT_STATUS_MARKERS = {STATUS_POISONED, STATUS_DRUNK, STATUS_PROTECTED}
 VOTE_WINDOW_SECONDS = 10
 
 
@@ -82,6 +83,7 @@ class GamePlayer:
     night_action_prompt: str | None = None
     storyteller_message: str | None = None
     status_markers: list[str] = field(default_factory=list)
+    temporary_status_markers: list[str] = field(default_factory=list)
     is_poisoned: bool = False
     is_drunk: bool = False
     pending_death: bool = False
@@ -233,6 +235,24 @@ class GameStore:
         player.status_markers = sorted(marker_set)
         self._sync_player_status_flags_locked(player)
 
+    def _set_temporary_status_marker_locked(self, player: GamePlayer, marker: str, enabled: bool) -> None:
+        self._set_status_marker_locked(player, marker, enabled)
+        marker_set = set(player.temporary_status_markers)
+        cleaned = marker.strip()
+        if not cleaned:
+            return
+        if enabled:
+            marker_set.add(cleaned)
+        else:
+            marker_set.discard(cleaned)
+        player.temporary_status_markers = sorted(marker_set)
+
+    def _clear_expired_temporary_statuses_locked(self) -> None:
+        for player in self._game.players.values():
+            for marker in list(player.temporary_status_markers):
+                self._set_status_marker_locked(player, marker, False)
+            player.temporary_status_markers = []
+
     def _serialize_game_player_snapshot(self, player: GamePlayer) -> dict[str, Any]:
         return {
             'discord_user_id': player.discord_user_id,
@@ -246,6 +266,7 @@ class GameStore:
             'night_action_prompt': player.night_action_prompt,
             'storyteller_message': player.storyteller_message,
             'status_markers': player.status_markers,
+            'temporary_status_markers': player.temporary_status_markers,
             'is_poisoned': player.is_poisoned,
             'is_drunk': player.is_drunk,
             'pending_death': player.pending_death,
@@ -372,6 +393,7 @@ class GameStore:
                         *([STATUS_DRUNK] if player_snapshot.get('is_drunk') else []),
                         *([STATUS_DIES_AT_DAWN] if player_snapshot.get('pending_death') else []),
                     ]),
+                    temporary_status_markers=self._normalize_status_markers(player_snapshot.get('temporary_status_markers') or []),
                     dead_vote_available=bool(player_snapshot.get('dead_vote_available', True)),
                     night_action_response=player_snapshot.get('night_action_response'),
                     night_action_submitted_at=parse_dt(player_snapshot.get('night_action_submitted_at')), 
@@ -643,14 +665,14 @@ class GameStore:
                 target = self._game.players.get(player_id)
                 if not target:
                     continue
-                self._set_status_marker_locked(target, STATUS_POISONED, True)
+                self._set_temporary_status_marker_locked(target, STATUS_POISONED, True)
                 summary.append(f'poisoned: {target.display_name}')
 
             for player_id in drunk_target_ids:
                 target = self._game.players.get(player_id)
                 if not target:
                     continue
-                self._set_status_marker_locked(target, STATUS_DRUNK, True)
+                self._set_temporary_status_marker_locked(target, STATUS_DRUNK, True)
                 summary.append(f'drunk: {target.display_name}')
 
             for player_id in sober_target_ids:
@@ -1013,6 +1035,7 @@ class GameStore:
                         *([STATUS_DRUNK] if raw_player.get('is_drunk') else []),
                         *([STATUS_DIES_AT_DAWN] if raw_player.get('pending_death') else []),
                     ]),
+                    temporary_status_markers=self._normalize_status_markers(raw_player.get('temporary_status_markers') or []),
                     night_action_response=raw_player.get('night_action_response'),
                 )
                 self._sync_player_status_flags_locked(player_map[discord_user_id])
@@ -1055,6 +1078,7 @@ class GameStore:
 
             self._game.phase = phase
             if phase == GamePhase.NIGHT:
+                self._clear_expired_temporary_statuses_locked()
                 self._resolve_execution_candidate_locked(actor_id)
                 self._game.night_count += 1
                 self._clear_night_state_locked(clear_storyteller_message=True)
@@ -1226,11 +1250,17 @@ class GameStore:
             player = self._game.players[discord_user_id]
             changes: list[str] = []
             if is_poisoned is not None:
-                self._set_status_marker_locked(player, STATUS_POISONED, is_poisoned)
-                changes.append(f'poisoned={is_poisoned}')
+                if is_poisoned and self._game.phase == GamePhase.NIGHT:
+                    self._set_temporary_status_marker_locked(player, STATUS_POISONED, True)
+                else:
+                    self._set_temporary_status_marker_locked(player, STATUS_POISONED, False)
+                    self._set_status_marker_locked(player, STATUS_POISONED, is_poisoned)
             if is_drunk is not None:
-                self._set_status_marker_locked(player, STATUS_DRUNK, is_drunk)
-                changes.append(f'drunk={is_drunk}')
+                if is_drunk and self._game.phase == GamePhase.NIGHT:
+                    self._set_temporary_status_marker_locked(player, STATUS_DRUNK, True)
+                else:
+                    self._set_temporary_status_marker_locked(player, STATUS_DRUNK, False)
+                    self._set_status_marker_locked(player, STATUS_DRUNK, is_drunk)
             if pending_death is not None:
                 self._set_status_marker_locked(player, STATUS_DIES_AT_DAWN, pending_death)
                 changes.append(f'pending_death={pending_death}')
@@ -1239,10 +1269,16 @@ class GameStore:
                 else:
                     self._restore_future_steps_for_player_locked(discord_user_id, 'Skipped because this player will die at dawn.')
             for status in self._normalize_status_markers(add_statuses):
-                self._set_status_marker_locked(player, status, True)
+                if status in TEMPORARY_NIGHT_STATUS_MARKERS and self._game.phase == GamePhase.NIGHT:
+                    self._set_temporary_status_marker_locked(player, status, True)
+                else:
+                    self._set_status_marker_locked(player, status, True)
                 changes.append(f'added={status}')
             for status in self._normalize_status_markers(remove_statuses):
-                self._set_status_marker_locked(player, status, False)
+                if status in TEMPORARY_NIGHT_STATUS_MARKERS:
+                    self._set_temporary_status_marker_locked(player, status, False)
+                else:
+                    self._set_status_marker_locked(player, status, False)
                 changes.append(f'removed={status}')
             if changes:
                 self._game.night_feed.append(f'{actor_id} updated {player.display_name}: ' + ', '.join(changes))
@@ -1639,6 +1675,9 @@ class GameStore:
 
 
 store = GameStore()
+
+
+
 
 
 
