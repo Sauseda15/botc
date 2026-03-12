@@ -196,6 +196,8 @@ export default function PlayerView({ auth }: Props) {
   const liveSecondsRemaining = nominationState && !nominationState.resolved_at
     ? voteWindow - (liveElapsedSeconds % voteWindow)
     : nominationState?.seconds_remaining ?? 0;
+  
+  const votingRoundActive = Boolean(nominationState && !nominationState.resolved_at && liveVoteIndex >= 0 && liveVoteIndex < nominationState.vote_order.length);
 
   const liveVoteIndex = nominationState && !nominationState.resolved_at
     ? Math.floor(liveElapsedSeconds / voteWindow)
@@ -432,7 +434,7 @@ export default function PlayerView({ auth }: Props) {
   const hasAllTargets = !needsPlayerSelect || selectedTargets.filter(Boolean).length === activeTargetCount;
   const canSignalGrimoireReady = Boolean(viewerGrimoire) && Boolean(isViewerTurn);
   const currentVoterId = nominationState?.resolved_at ? null : (liveCurrentVoterId ?? nominationState?.current_voter_id ?? null);
-  const currentVoterName = currentVoterId ? (playerNameById.get(currentVoterId) ?? currentVoterId) : 'Locking votes';
+  const currentVoterName = const currentVoterName = liveCurrentVoterId ? (state?.players.find((player) => player.player_id === liveCurrentVoterId)?.display_name ?? 'Unknown') : 'Waiting for storyteller'; // This shows the live current voter based on the vote order and elapsed time, but falls back to the nomination's current_voter_id if the live calculation isn't available for some reason (e.g. the vote order isn't populated yet)
   const isCurrentVoter = currentVoterId === state?.viewer?.discord_user_id;
   const nomineeName = nominationState?.nominee_id ? playerNameById.get(nominationState.nominee_id) ?? nominationState.nominee_id : null;
   const nominatorName = nominationState?.nominator_id ? playerNameById.get(nominationState.nominator_id) ?? nominationState.nominator_id : null;
@@ -652,13 +654,15 @@ export default function PlayerView({ auth }: Props) {
               <p><strong>Nominator:</strong> {nominatorName ?? 'Unknown'}<br /><strong>Nominee:</strong> {nomineeName ?? 'Unknown'}</p>
               {nominationState.resolved_at ? (
                 <p className="muted">Vote locked: {nominationState.result_vote_count} yes vote(s). {nominationState.result_vote_count >= nominationState.required_votes ? 'The nomination reached the execution threshold.' : 'The nomination failed to reach the execution threshold.'}</p>
-              ) : (
+              ) : votingRoundActive ? (
                 <p className="muted">Current voter: {currentVoterName} · {liveSecondsRemaining}s remaining</p>
+              ) : (
+                  <p className="muted">Voting round complete. Waiting for storyteller to resolve the nomination.</p>
               )}
               {executionCandidateName ? <p className="muted">Currently marked for execution: {executionCandidateName} ({executionCandidateVotes} vote(s))</p> : <p className="muted">No player is currently marked for execution.</p>}
               <div className="inline-form">
-                <button className="primary" onClick={() => castVote(true)} disabled={isPreview || !isCurrentVoter || Boolean(nominationState.resolved_at) || (!state?.viewer?.is_alive && !state?.viewer?.dead_vote_available)}>Vote Yes</button>
-                <button className="secondary" onClick={() => castVote(false)} disabled={isPreview || !isCurrentVoter || Boolean(nominationState.resolved_at)}>Vote No</button>
+                <button className="primary" onClick={() => castVote(true)} disabled={isPreview || !votingRoundActive || !isCurrentVoter || Boolean(nominationState.resolved_at) || (!state?.viewer?.is_alive && !state?.viewer?.dead_vote_available)}>Vote Yes</button>
+                <button className="secondary" onClick={() => castVote(false)} disabled={isPreview || !votingRoundActive || !isCurrentVoter || Boolean(nominationState.resolved_at)}>Vote No</button>
                 <button className="secondary" onClick={() => load()}>Refresh</button>
               </div>
               {!state?.viewer?.is_alive ? <p className="muted">Dead vote token: {state?.viewer?.dead_vote_available ? 'Available' : 'Already used'}</p> : null}
