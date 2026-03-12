@@ -1055,7 +1055,9 @@ class GameStore:
             self._game.current_nomination = nomination
             self._game.nominators_today.append(nominator_id)
             self._game.nominees_today.append(nominee_id)
-            self._game.log_entries.append(f'{actor_id} opened a nomination: {nominator_id} -> {nominee_id}.')
+            nominator_name = self._game.players[nominator_id].display_name
+            nominee_name = self._game.players[nominee_id].display_name
+            self._game.log_entries.append(f'{actor_id} opened a nomination: {nominator_name} -> {nominee_name}.')
             self._touch()
             return nomination
 
@@ -1539,6 +1541,7 @@ class GameStore:
 
 
 store = GameStore()
+
 
 
 

@@ -189,25 +189,17 @@ export default function PlayerView({ auth }: Props) {
   const liveElapsedSeconds = nominationState && !nominationState.resolved_at
     ? Math.max(0, Math.floor((nowMs - new Date(nominationState.opened_at).getTime()) / 1000))
     : 0;
-
-  const voteWindow = 10; // seconds per vote
-
-
+  const voteWindow = 10;
   const liveSecondsRemaining = nominationState && !nominationState.resolved_at
-    ? voteWindow - (liveElapsedSeconds % voteWindow)
+    ? Math.max(0, voteWindow - (liveElapsedSeconds % voteWindow))
     : nominationState?.seconds_remaining ?? 0;
-  
-    const liveVoteIndex = nominationState && !nominationState.resolved_at
+  const liveVoteIndex = nominationState && !nominationState.resolved_at
     ? Math.floor(liveElapsedSeconds / voteWindow)
     : -1;
-    
-    const votingRoundActive = Boolean(nominationState && !nominationState.resolved_at && liveVoteIndex >= 0 && liveVoteIndex < nominationState.vote_order.length);
-
-
-
-  const liveCurrentVoterId = nominationState && !nominationState.resolved_at && liveVoteIndex >= 0 && liveVoteIndex < nominationState.vote_order.length
-    ? nominationState.vote_order[liveVoteIndex]
-    : null; // This is the ID of the player currently expected to vote, or null if we're in between votes or the vote order isn't available
+  const votingRoundActive = Boolean(nominationState && !nominationState.resolved_at && liveVoteIndex >= 0 && liveVoteIndex < nominationState.vote_order.length);
+  const liveCurrentVoterId = votingRoundActive
+    ? nominationState?.vote_order[liveVoteIndex] ?? null
+    : null;
 
   const selectablePlayers = state?.players.filter((player) => {
     if (currentNightStep?.allow_self === false && player.discord_user_id === state?.viewer?.discord_user_id) {
@@ -436,11 +428,32 @@ export default function PlayerView({ auth }: Props) {
   const hasAllTargets = !needsPlayerSelect || selectedTargets.filter(Boolean).length === activeTargetCount;
   const canSignalGrimoireReady = Boolean(viewerGrimoire) && Boolean(isViewerTurn);
   const currentVoterId = nominationState?.resolved_at ? null : (liveCurrentVoterId ?? nominationState?.current_voter_id ?? null);
-  const currentVoterName = liveCurrentVoterId ? (state?.players.find((player) => player.discord_user_id === liveCurrentVoterId)?.display_name ?? 'Unknown') : 'Waiting for storyteller'; // This shows the live current voter based on the vote order and elapsed time, but falls back to the nomination's current_voter_id if the live calculation isn't available for some reason (e.g. the vote order isn't populated yet)
+  const currentVoterName = currentVoterId ? (playerNameById.get(currentVoterId) ?? currentVoterId) : 'Waiting for storyteller';
   const isCurrentVoter = currentVoterId === state?.viewer?.discord_user_id;
   const nomineeName = nominationState?.nominee_id ? playerNameById.get(nominationState.nominee_id) ?? nominationState.nominee_id : null;
   const nominatorName = nominationState?.nominator_id ? playerNameById.get(nominationState.nominator_id) ?? nominationState.nominator_id : null;
   const executionCandidateName = executionCandidateId ? playerNameById.get(executionCandidateId) ?? executionCandidateId : null;
+  const voteLedger = (nominationState?.vote_order ?? []).map((voterId, index) => {
+    const recordedVote = nominationState?.votes[voterId];
+    let status: 'yes' | 'no' | 'pending' = 'pending';
+
+    if (recordedVote === true) {
+      status = 'yes';
+    } else if (recordedVote === false) {
+      status = 'no';
+    } else if (nominationState?.resolved_at || index < liveVoteIndex) {
+      status = 'no';
+    }
+
+    return {
+      voterId,
+      displayName: playerNameById.get(voterId) ?? voterId,
+      status,
+    };
+  });
+  const liveYesVotes = voteLedger.filter((entry) => entry.status === 'yes').length;
+  const liveNoVotes = voteLedger.filter((entry) => entry.status === 'no').length;
+  const livePendingVotes = voteLedger.filter((entry) => entry.status === 'pending').length;
 
   return (
     <section className="panel split">
@@ -661,6 +674,12 @@ export default function PlayerView({ auth }: Props) {
               ) : (
                   <p className="muted">Voting round complete. Waiting for storyteller to resolve the nomination.</p>
               )}
+              <p className="muted">Live tally: {liveYesVotes} yes · {liveNoVotes} no · {livePendingVotes} pending</p>
+              <ol className="log-list">
+                {voteLedger.map((entry) => (
+                  <li key={`${entry.voterId}-${entry.status}`}>{entry.displayName}: {entry.status === 'pending' ? 'Pending' : entry.status.toUpperCase()}</li>
+                ))}
+              </ol>
               {executionCandidateName ? <p className="muted">Currently marked for execution: {executionCandidateName} ({executionCandidateVotes} vote(s))</p> : <p className="muted">No player is currently marked for execution.</p>}
               <div className="inline-form">
                 <button className="primary" onClick={() => castVote(true)} disabled={isPreview || !votingRoundActive || !isCurrentVoter || Boolean(nominationState.resolved_at) || (!state?.viewer?.is_alive && !state?.viewer?.dead_vote_available)}>Vote Yes</button>

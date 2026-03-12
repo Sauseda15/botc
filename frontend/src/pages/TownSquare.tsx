@@ -40,19 +40,41 @@ export default function TownSquare() {
   const liveElapsedSeconds = nominationState && !nominationState.resolved_at
     ? Math.max(0, Math.floor((nowMs - new Date(nominationState.opened_at).getTime()) / 1000))
     : 0;
+  const voteWindow = 10;
   const liveSecondsRemaining = nominationState && !nominationState.resolved_at
-    ? Math.max(0, 10 - (liveElapsedSeconds % 10))
+    ? Math.max(0, voteWindow - (liveElapsedSeconds % voteWindow))
     : nominationState?.seconds_remaining ?? 0;
   const liveVoteIndex = nominationState && !nominationState.resolved_at
-    ? Math.floor(liveElapsedSeconds / 10)
+    ? Math.floor(liveElapsedSeconds / voteWindow)
     : -1;
-  const liveCurrentVoterId = nominationState && !nominationState.resolved_at
-    ? (nominationState.vote_order[Math.min(liveVoteIndex, Math.max(nominationState.vote_order.length - 1, 0))] ?? null)
+  const liveCurrentVoterId = nominationState && !nominationState.resolved_at && liveVoteIndex >= 0 && liveVoteIndex < nominationState.vote_order.length
+    ? nominationState.vote_order[liveVoteIndex]
     : null;
-  const liveCurrentVoterName = liveCurrentVoterId ? (playerNameById.get(liveCurrentVoterId) ?? liveCurrentVoterId) : 'Locking votes';
+  const liveCurrentVoterName = liveCurrentVoterId ? (playerNameById.get(liveCurrentVoterId) ?? liveCurrentVoterId) : 'Waiting for storyteller';
   const nominatorName = nominationState?.nominator_id ? (playerNameById.get(nominationState.nominator_id) ?? nominationState.nominator_id) : 'Unknown';
   const nomineeName = nominationState?.nominee_id ? (playerNameById.get(nominationState.nominee_id) ?? nominationState.nominee_id) : 'Unknown';
   const executionCandidateName = state?.execution_candidate_id ? (playerNameById.get(state.execution_candidate_id) ?? state.execution_candidate_id) : null;
+  const voteLedger = (nominationState?.vote_order ?? []).map((voterId, index) => {
+    const recordedVote = nominationState?.votes[voterId];
+    let status: 'yes' | 'no' | 'pending' = 'pending';
+
+    if (recordedVote === true) {
+      status = 'yes';
+    } else if (recordedVote === false) {
+      status = 'no';
+    } else if (nominationState?.resolved_at || index < liveVoteIndex) {
+      status = 'no';
+    }
+
+    return {
+      voterId,
+      displayName: playerNameById.get(voterId) ?? voterId,
+      status,
+    };
+  });
+  const liveYesVotes = voteLedger.filter((entry) => entry.status === 'yes').length;
+  const liveNoVotes = voteLedger.filter((entry) => entry.status === 'no').length;
+  const livePendingVotes = voteLedger.filter((entry) => entry.status === 'pending').length;
 
   useEffect(() => {
     const load = () => {
@@ -105,12 +127,17 @@ export default function TownSquare() {
             <div className="stack">
               <span>Nominator: {nominatorName}</span>
               <span>Nominee: {nomineeName}</span>
-              <span>Votes cast: {Object.keys(nominationState.votes).length}</span>
               {nominationState.resolved_at ? (
                 <span>Vote locked: {nominationState.result_vote_count} yes vote(s)</span>
               ) : (
                 <span>Current voter: {liveCurrentVoterName} · {liveSecondsRemaining}s remaining</span>
               )}
+              <span>Live tally: {liveYesVotes} yes · {liveNoVotes} no · {livePendingVotes} pending</span>
+              <ol className="log-list">
+                {voteLedger.map((entry) => (
+                  <li key={`${entry.voterId}-${entry.status}`}>{entry.displayName}: {entry.status === 'pending' ? 'Pending' : entry.status.toUpperCase()}</li>
+                ))}
+              </ol>
               {executionCandidateName ? (
                 <span>Marked for execution: {executionCandidateName} ({state?.execution_candidate_votes ?? 0} vote(s))</span>
               ) : null}
