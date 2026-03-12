@@ -489,6 +489,13 @@ class GameStore:
                 return step
         return None
 
+    def _append_private_history_once_locked(self, player: GamePlayer, message: str) -> None:
+        if not message:
+            return
+        if player.private_history and player.private_history[-1] == message:
+            return
+        player.private_history.append(message)
+
     def _set_player_prompt_for_active_step_locked(self, step: NightStep | None) -> None:
         for player in self._game.players.values():
             player.night_action_prompt = None
@@ -496,12 +503,14 @@ class GameStore:
             return
         player = self._game.players.get(step.player_id)
         if player:
-            player.night_action_prompt = step.player_prompt or build_night_prompt(
+            prompt = step.player_prompt or build_night_prompt(
                 self._game.script,
                 player.role_name,
                 player.alignment,
                 player.reminders,
             )
+            player.night_action_prompt = prompt
+            self._append_private_history_once_locked(player, f'Night prompt: {prompt}')
 
     def _skip_future_steps_for_player_locked(self, discord_user_id: str, reason: str) -> None:
         for step in self._game.night_steps:
@@ -526,7 +535,7 @@ class GameStore:
             if player.is_alive:
                 player.is_alive = False
                 player.storyteller_message = 'You died in the night.'
-                player.private_history.append('Storyteller: You died in the night.')
+                self._append_private_history_once_locked(player, 'Storyteller: You died in the night.')
                 resolved.append(player.display_name)
         if resolved:
             self._game.log_entries.append(f'{actor_id} revealed dawn deaths: {", ".join(resolved)}.')
@@ -548,7 +557,7 @@ class GameStore:
             player = self._game.players.get(step.player_id)
             if player:
                 player.storyteller_message = resolution_note
-                player.private_history.append(f'Storyteller: {resolution_note}')
+                self._append_private_history_once_locked(player, f'Storyteller: {resolution_note}')
             summary.append(f'info given: {resolution_note}')
 
         for player_id in death_target_ids:
@@ -1177,7 +1186,7 @@ class GameStore:
     def add_private_history(self, discord_user_id: str, message: str) -> None:
         with self._lock:
             player = self._game.players[discord_user_id]
-            player.private_history.append(message)
+            self._append_private_history_once_locked(player, message)
             self._touch()
 
     def set_player_reminders(self, actor_id: str, discord_user_id: str, reminders: list[str]) -> GamePlayer:
@@ -1185,6 +1194,7 @@ class GameStore:
             player = self._game.players[discord_user_id]
             player.reminders = reminders
             player.night_action_prompt = build_night_prompt(self._game.script, player.role_name, player.alignment, reminders)
+            self._append_private_history_once_locked(player, f'Night prompt: {player.night_action_prompt}')
             self._game.log_entries.append(f'{actor_id} updated reminders for {discord_user_id}.')
             self._touch()
             return player
@@ -1198,6 +1208,7 @@ class GameStore:
                 active_step.player_prompt = prompt
             player.night_action_response = None
             player.night_action_submitted_at = None
+            self._append_private_history_once_locked(player, f'Night prompt override: {prompt}')
             self._game.night_feed.append(f'{actor_id} set a night prompt for {player.display_name}.')
             self._touch()
             return player
@@ -1268,7 +1279,7 @@ class GameStore:
             player = self._game.players[discord_user_id]
             player.night_action_response = response_text
             player.night_action_submitted_at = utcnow()
-            player.private_history.append(self._format_private_history_entry_locked(player, response_text))
+            self._append_private_history_once_locked(player, self._format_private_history_entry_locked(player, response_text))
             active_step.response_text = response_text
             if active_step.requires_approval:
                 active_step.status = NightStepStatus.AWAITING_APPROVAL
@@ -1295,7 +1306,7 @@ class GameStore:
             if not self._viewer_can_see_grimoire_locked(player, active_step):
                 raise ValueError('This player does not currently have a reviewable grimoire window.')
 
-            player.private_history.append('Marked grimoire review as complete.')
+            self._append_private_history_once_locked(player, 'Marked grimoire review as complete.')
             active_step.response_text = 'Spy has finished reviewing the grimoire.'
             self._game.night_feed.append(f'{player.display_name} signaled that they are done reviewing the grimoire.')
             self._touch()
