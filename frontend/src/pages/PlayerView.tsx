@@ -434,7 +434,7 @@ export default function PlayerView({ auth }: Props) {
   const hasAllTargets = !needsPlayerSelect || selectedTargets.filter(Boolean).length === activeTargetCount;
   const canSignalGrimoireReady = Boolean(viewerGrimoire) && Boolean(isViewerTurn);
   const currentVoterId = nominationState?.resolved_at ? null : (liveCurrentVoterId ?? nominationState?.current_voter_id ?? null);
-  const currentVoterName = const currentVoterName = liveCurrentVoterId ? (state?.players.find((player) => player.player_id === liveCurrentVoterId)?.display_name ?? 'Unknown') : 'Waiting for storyteller'; // This shows the live current voter based on the vote order and elapsed time, but falls back to the nomination's current_voter_id if the live calculation isn't available for some reason (e.g. the vote order isn't populated yet)
+  const currentVoterName = liveCurrentVoterId ? (state?.players.find((player) => player.player_id === liveCurrentVoterId)?.display_name ?? 'Unknown') : 'Waiting for storyteller'; // This shows the live current voter based on the vote order and elapsed time, but falls back to the nomination's current_voter_id if the live calculation isn't available for some reason (e.g. the vote order isn't populated yet)
   const isCurrentVoter = currentVoterId === state?.viewer?.discord_user_id;
   const nomineeName = nominationState?.nominee_id ? playerNameById.get(nominationState.nominee_id) ?? nominationState.nominee_id : null;
   const nominatorName = nominationState?.nominator_id ? playerNameById.get(nominationState.nominator_id) ?? nominationState.nominator_id : null;
