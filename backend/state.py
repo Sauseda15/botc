@@ -526,6 +526,52 @@ class GameStore:
                 step.completed_at = None
                 step.resolution_note = None
 
+    def _find_imp_successor_locked(self, *, allow_any_minion: bool, exclude_ids: set[str] | None = None) -> GamePlayer | None:
+        excluded = exclude_ids or set()
+        eligible_minions = [
+            player
+            for player in self._game.players.values()
+            if player.discord_user_id not in excluded
+            and player.is_alive
+            and not player.pending_death
+            and get_role_group(self._game.script, player.role_name) == 'minions'
+        ]
+        scarlet_woman = next((player for player in eligible_minions if player.role_name == 'Scarlet Woman'), None)
+        if scarlet_woman:
+            return scarlet_woman
+        if allow_any_minion and eligible_minions:
+            return secrets.choice(eligible_minions)
+        return None
+
+    def _promote_player_to_imp_locked(self, player: GamePlayer, reason: str) -> None:
+        player.role_name = 'Imp'
+        player.alignment = 'Evil'
+        player.pending_death = False
+        self._set_status_marker_locked(player, STATUS_DIES_AT_DAWN, False)
+        player.storyteller_message = 'You have become the Imp.'
+        self._append_private_history_once_locked(player, f'Storyteller: You have become the Imp. ({reason})')
+        self._game.log_entries.append(f'{player.display_name} became the Imp ({reason}).')
+
+    def _resolve_execution_candidate_locked(self, actor_id: str) -> None:
+        candidate_id = self._game.execution_candidate_id
+        if not candidate_id:
+            return
+        candidate = self._game.players.get(candidate_id)
+        self._game.execution_candidate_id = None
+        self._game.execution_candidate_votes = 0
+        if not candidate or not candidate.is_alive:
+            return
+        candidate.is_alive = False
+        self._skip_future_steps_for_player_locked(candidate_id, 'Skipped because this player is dead.')
+        candidate.storyteller_message = 'You were executed today.'
+        self._append_private_history_once_locked(candidate, 'Storyteller: You were executed today.')
+        self._game.log_entries.append(f'{actor_id} executed {candidate.display_name}.')
+        alive_after_execution = sum(1 for player in self._game.players.values() if player.is_alive)
+        if candidate.role_name == 'Imp' and alive_after_execution >= 5:
+            successor = self._find_imp_successor_locked(allow_any_minion=False, exclude_ids={candidate_id})
+            if successor:
+                self._promote_player_to_imp_locked(successor, 'Scarlet Woman caught the executed Imp')
+
     def _apply_pending_deaths_locked(self, actor_id: str) -> list[str]:
         resolved: list[str] = []
         for player in self._game.players.values():
@@ -567,6 +613,13 @@ class GameStore:
             self._set_status_marker_locked(target, STATUS_DIES_AT_DAWN, True)
             self._skip_future_steps_for_player_locked(player_id, 'Skipped because this player will die at dawn.')
             summary.append(f'dies at dawn: {target.display_name}')
+
+        if step.role_name == 'Imp' and step.player_id in death_target_ids:
+            successor = self._find_imp_successor_locked(allow_any_minion=True, exclude_ids={step.player_id})
+            if successor:
+                reason = 'Scarlet Woman inherited the Imp' if successor.role_name == 'Scarlet Woman' else 'A living minion inherited the Imp'
+                self._promote_player_to_imp_locked(successor, reason)
+                summary.append(f'new Imp: {successor.display_name}')
 
         for player_id in poison_target_ids:
             target = self._game.players.get(player_id)
@@ -984,6 +1037,7 @@ class GameStore:
 
             self._game.phase = phase
             if phase == GamePhase.NIGHT:
+                self._resolve_execution_candidate_locked(actor_id)
                 self._game.night_count += 1
                 self._clear_night_state_locked(clear_storyteller_message=True)
                 self._game.night_steps = self._build_night_steps_locked()
@@ -1567,6 +1621,7 @@ class GameStore:
 
 
 store = GameStore()
+
 
 
 
